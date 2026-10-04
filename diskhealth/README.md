@@ -4,8 +4,8 @@ This plugin shows SSD health in GLPI and tells you which drives to replace. It s
 
 Where you see it:
 
-- **On each computer:** a **Disk health** tab lists each drive with its health %, status, problems, power-on hours, data written and temperature. The tab badge counts drives to replace, and a warning sits at the top of the computer's page while a drive needs replacing.
-- **Across the fleet:** **Assets > Disk health** lists every drive, worst first. You can filter it (for example "Health below 30" or "Status is Replace now") and export it to CSV, PDF or spreadsheet with GLPI's standard export button.
+- **On each computer:** a **Disk health** tab lists each drive with the volumes on it (drive letters on Windows, mount points on Linux), its health % and where that % comes from, status, problems, power-on hours, data written and temperature. The tab badge counts drives to replace, and a warning sits at the top of the computer's page while a drive needs replacing.
+- **Across the fleet:** **Assets > Disk health** lists every drive with its computer and volumes, worst first. You can filter it (for example "Health below 30" or "Status is Replace now") and export it to CSV, PDF or spreadsheet with GLPI's standard export button.
 
 How it tells admins:
 
@@ -38,7 +38,7 @@ It needs agents running the SSD health module (`../glpi-agent-addon`). Drives fr
 
 Data appears as each agent sends its next inventory. Run `glpi-agent --force` on a PC to send one now.
 
-**Upgrading from 1.0.0:** replace the `diskhealth` folder. GLPI then turns the plugin off and lists it as "To update": in **Setup > Plugins**, click **Upgrade**, then **Enable**. On the command line, add `--force` to the install command. Your data and thresholds are kept.
+**Upgrading from 1.0.0 or 1.1.0:** replace the `diskhealth` folder. GLPI then turns the plugin off and lists it as "To update": in **Setup > Plugins**, click **Upgrade**, then **Enable**. On the command line, add `--force` to the install command. Your data and settings are kept. If you haven't edited the alert email template, it gets the new volumes line. Volumes appear once a PC runs the updated agent module (add-on 1.1.0 or the matching agent installer) and sends its next inventory.
 
 ## Statuses
 

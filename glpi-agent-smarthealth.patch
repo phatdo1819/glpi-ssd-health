@@ -39027,7 +39027,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/lib/GLPI/Agent/Inventory.pm b/lib/GLPI/Agent/Inventory.pm
-index 700b324e7..1becdbe4c 100644
+index 700b324e7..9c6f042a1 100644
 --- a/lib/GLPI/Agent/Inventory.pm
 +++ b/lib/GLPI/Agent/Inventory.pm
 @@ -1,4 +1,5 @@
@@ -39047,7 +39047,7 @@ index 700b324e7..1becdbe4c 100644
 +                            SMART_WRITTEN SMART_CRITICAL_WARNING
 +                            SMART_MEDIA_ERRORS SMART_REALLOCATED_SECTORS
 +                            SMART_PENDING_SECTORS SMART_UNCORRECTABLE_SECTORS
-+                            SMART_FAILING_ATTRIBUTES/ ],
++                            SMART_FAILING_ATTRIBUTES SMART_VOLUMES/ ],
      VIDEOS           => [ qw/CHIPSET MEMORY NAME RESOLUTION PCISLOT PCIID/ ],
      USBDEVICES       => [ qw/VENDORID PRODUCTID MANUFACTURER CAPTION SERIAL
                              CLASS SUBCLASS NAME/ ],
@@ -39078,10 +39078,10 @@ index bb9273d70..0fcd3e461 100644
          integer         => [ qw/MEMORY/ ],
 diff --git a/lib/GLPI/Agent/Task/Inventory/Generic/Storages/SmartHealth.pm b/lib/GLPI/Agent/Task/Inventory/Generic/Storages/SmartHealth.pm
 new file mode 100644
-index 000000000..aa2545f73
+index 000000000..9f7a0d60f
 --- /dev/null
 +++ b/lib/GLPI/Agent/Task/Inventory/Generic/Storages/SmartHealth.pm
-@@ -0,0 +1,391 @@
+@@ -0,0 +1,529 @@
 +package GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth;
 +
 +use strict;
@@ -39090,6 +39090,7 @@ index 000000000..aa2545f73
 +use parent 'GLPI::Agent::Task::Inventory::Module';
 +
 +use Cpanel::JSON::XS;
++use UNIVERSAL::require;
 +
 +use GLPI::Agent::Tools;
 +
@@ -39156,7 +39157,7 @@ index 000000000..aa2545f73
 +    my $storages = $inventory->getSection('STORAGES');
 +    return unless ref($storages) eq 'ARRAY' && @{$storages};
 +
-+    my %done;
++    my (%done, $volumes);
 +    foreach my $device (_getDevices(logger => $logger)) {
 +        my $data = _getSmartData(
 +            command => "smartctl -x -j -d $device->{type} \"$device->{name}\"",
@@ -39184,6 +39185,12 @@ index 000000000..aa2545f73
 +        foreach my $key (keys(%{$health})) {
 +            $storage->{$key} = $health->{$key};
 +        }
++
++        # Drive letters or mount points on the disk, to know which disk to replace
++        $volumes //= _getVolumes(logger => $logger);
++        my $disk = _getDiskKey($storage->{NAME}, $device->{name});
++        $storage->{SMART_VOLUMES} = join(', ', @{$volumes->{$disk}})
++            if defined($disk) && $volumes->{$disk};
 +    }
 +}
 +
@@ -39451,17 +39458,9 @@ index 000000000..aa2545f73
 +    return 0 unless defined($device) && defined($name);
 +
 +    if (($osname // OSNAME) eq 'MSWin32') {
-+        # smartctl names Windows disks /dev/sda, /dev/sdb, ... in PhysicalDrive0, 1, ... order
-+        my ($letters) = $device =~ m{^/dev/sd([a-z]+)$}
-+            or return 0;
-+        my $index = 0;
-+        foreach my $letter (split(//, $letters)) {
-+            $index = $index * 26 + ord($letter) - ord('a') + 1;
-+        }
-+        $index--;
-+        my ($number) = $name =~ /^(?:PhysicalDisk|\\\\\.\\PhysicalDrive)(\d+)$/i
-+            or return 0;
-+        return $number == $index;
++        my $index = _getWindowsDiskIndex($device);
++        my $number = _getWindowsDiskNumber($name);
++        return defined($index) && defined($number) && $number == $index;
 +    }
 +
 +    my ($basename) = $device =~ m{^/dev/(.+)$}
@@ -39472,7 +39471,320 @@ index 000000000..aa2545f73
 +    return $basename =~ /^nvme\d+$/ && $name eq $basename . 'n1';
 +}
 +
++# smartctl names Windows disks /dev/sda, /dev/sdb, ... in PhysicalDrive0, 1, ... order
++sub _getWindowsDiskIndex {
++    my ($device) = @_;
++
++    my ($letters) = ($device // '') =~ m{^/dev/sd([a-z]+)$}
++        or return;
++    my $index = 0;
++    foreach my $letter (split(//, $letters)) {
++        $index = $index * 26 + ord($letter) - ord('a') + 1;
++    }
++
++    return $index - 1;
++}
++
++# Windows storages are named PhysicalDisk0 or \\.\PHYSICALDRIVE0
++sub _getWindowsDiskNumber {
++    my ($name) = @_;
++
++    my ($number) = ($name // '') =~ /^(?:PhysicalDisk|\\\\\.\\PhysicalDrive)(\d+)$/i
++        or return;
++
++    return $number;
++}
++
++# Key of a disk in _getVolumes() result: Windows disk number or Linux block device name
++sub _getDiskKey {
++    my ($name, $device, $osname) = @_;
++
++    if (($osname // OSNAME) eq 'MSWin32') {
++        return _getWindowsDiskNumber($name) // _getWindowsDiskIndex($device);
++    }
++
++    return $name if defined($name) && $name =~ /^[\w.-]+$/;
++
++    my ($basename) = ($device // '') =~ m{^/dev/(\w+)$}
++        or return;
++
++    return $basename =~ /^nvme\d+$/ ? $basename . 'n1' : $basename;
++}
++
++# Volumes on each disk, like "C: (Windows)" on Windows or "/home (data)" on Linux
++sub _getVolumes {
++    my (%params) = @_;
++
++    my $osname = delete($params{osname}) // OSNAME;
++
++    return _getWindowsVolumes(%params) if $osname eq 'MSWin32';
++    return _getLinuxVolumes(%params) if $osname eq 'linux';
++
++    return {};
++}
++
++sub _getWindowsVolumes {
++    my (%params) = @_;
++
++    # Tests provide WMI objects
++    my $partitions   = $params{partitions};
++    my $logicaldisks = $params{logicaldisks};
++    unless ($partitions) {
++        GLPI::Agent::Tools::Win32->require()
++            or return {};
++        $partitions = [ GLPI::Agent::Tools::Win32::getWMIObjects(
++            class      => 'Win32_LogicalDiskToPartition',
++            properties => [ qw/Antecedent Dependent/ ],
++            logger     => $params{logger},
++        ) ];
++        $logicaldisks = [ GLPI::Agent::Tools::Win32::getWMIObjects(
++            class      => 'Win32_LogicalDisk',
++            properties => [ qw/DeviceID VolumeName/ ],
++            logger     => $params{logger},
++        ) ];
++    }
++
++    my %labels;
++    foreach my $logicaldisk (@{$logicaldisks // []}) {
++        next unless ref($logicaldisk) eq 'HASH' && defined($logicaldisk->{DeviceID});
++        $labels{uc($logicaldisk->{DeviceID})} = $logicaldisk->{VolumeName};
++    }
++
++    my %volumes;
++    foreach my $link (@{$partitions}) {
++        next unless ref($link) eq 'HASH';
++        # Antecedent: \\HOST\root\cimv2:Win32_DiskPartition.DeviceID="Disk #0, Partition #1"
++        # Dependent:  \\HOST\root\cimv2:Win32_LogicalDisk.DeviceID="C:"
++        my ($disk) = ($link->{Antecedent} // '') =~ /Disk #(\d+),/
++            or next;
++        my ($letter) = ($link->{Dependent} // '') =~ /DeviceID="([A-Za-z]:)"/
++            or next;
++        $letter = uc($letter);
++        push @{$volumes{$disk}}, _getVolumeName($letter, $labels{$letter});
++    }
++
++    return { map { $_ => [ sort @{$volumes{$_}} ] } keys(%volumes) };
++}
++
++sub _getLinuxVolumes {
++    my (%params) = (
++        command => 'lsblk -J -o NAME,MOUNTPOINT,LABEL',
++        @_
++    );
++
++    my $data = _decode(scalar(getAllLines(%params)));
++    return {} unless $data && ref($data->{blockdevices}) eq 'ARRAY';
++
++    my %volumes;
++    foreach my $device (@{$data->{blockdevices}}) {
++        next unless ref($device) eq 'HASH' && defined($device->{name});
++        # LVM volume groups spanning several partitions are listed under each of them
++        my %seen;
++        my @mounts = grep { !$seen{$_}++ } _getMounts($device);
++        $volumes{$device->{name}} = \@mounts if @mounts;
++    }
++
++    return \%volumes;
++}
++
++# Mount points of a block device and what it holds: partitions, RAID, LVM, encryption
++sub _getMounts {
++    my ($device) = @_;
++
++    my @mounts;
++    push @mounts, _getVolumeName($device->{mountpoint}, $device->{label})
++        if defined($device->{mountpoint}) && $device->{mountpoint} =~ m{^/};
++
++    if (ref($device->{children}) eq 'ARRAY') {
++        push @mounts, map { _getMounts($_) } grep { ref($_) eq 'HASH' } @{$device->{children}};
++    }
++
++    return @mounts;
++}
++
++sub _getVolumeName {
++    my ($volume, $label) = @_;
++
++    $label = trimWhitespace($label) if defined($label);
++
++    return defined($label) && length($label) ? "$volume ($label)" : $volume;
++}
++
 +1;
+diff --git a/resources/generic/lsblk/debian-vm.json b/resources/generic/lsblk/debian-vm.json
+new file mode 100644
+index 000000000..373ba45ca
+--- /dev/null
++++ b/resources/generic/lsblk/debian-vm.json
+@@ -0,0 +1,32 @@
++{
++   "blockdevices": [
++      {
++         "name": "sr0",
++         "mountpoint": null,
++         "label": "Debian 13.5.0 arm64 1"
++      },{
++         "name": "nvme0n1",
++         "mountpoint": null,
++         "label": null,
++         "children": [
++            {
++               "name": "nvme0n1p1",
++               "mountpoint": null,
++               "label": null
++            },{
++               "name": "nvme0n1p2",
++               "mountpoint": "/boot/efi",
++               "label": null
++            },{
++               "name": "nvme0n1p3",
++               "mountpoint": "/",
++               "label": null
++            },{
++               "name": "nvme0n1p4",
++               "mountpoint": "[SWAP]",
++               "label": null
++            }
++         ]
++      }
++   ]
++}
+diff --git a/resources/generic/lsblk/lvm-crypt.json b/resources/generic/lsblk/lvm-crypt.json
+new file mode 100644
+index 000000000..2f2a6de67
+--- /dev/null
++++ b/resources/generic/lsblk/lvm-crypt.json
+@@ -0,0 +1,75 @@
++{
++   "blockdevices": [
++      {
++         "name": "nvme0n1",
++         "mountpoint": null,
++         "label": null,
++         "children": [
++            {
++               "name": "nvme0n1p1",
++               "mountpoint": "/boot/efi",
++               "label": null
++            },{
++               "name": "nvme0n1p2",
++               "mountpoint": "/boot",
++               "label": null
++            },{
++               "name": "nvme0n1p3",
++               "mountpoint": null,
++               "label": null,
++               "children": [
++                  {
++                     "name": "nvme0n1p3_crypt",
++                     "mountpoint": null,
++                     "label": null,
++                     "children": [
++                        {
++                           "name": "vg0-root",
++                           "mountpoint": "/",
++                           "label": null
++                        },{
++                           "name": "vg0-swap",
++                           "mountpoint": "[SWAP]",
++                           "label": null
++                        },{
++                           "name": "vg0-home",
++                           "mountpoint": "/home",
++                           "label": "home"
++                        }
++                     ]
++                  }
++               ]
++            }
++         ]
++      },{
++         "name": "sda",
++         "mountpoint": null,
++         "label": null,
++         "children": [
++            {
++               "name": "sda1",
++               "mountpoint": null,
++               "label": null,
++               "children": [
++                  {
++                     "name": "vg1-data",
++                     "mountpoint": "/srv/data",
++                     "label": "data"
++                  }
++               ]
++            },{
++               "name": "sda2",
++               "mountpoint": null,
++               "label": null,
++               "children": [
++                  {
++                     "name": "vg1-data",
++                     "mountpoint": "/srv/data",
++                     "label": "data"
++                  }
++               ]
++            }
++         ]
++      }
++   ]
++}
+diff --git a/resources/generic/lsblk/raid-loop.json b/resources/generic/lsblk/raid-loop.json
+new file mode 100644
+index 000000000..5ab977ecd
+--- /dev/null
++++ b/resources/generic/lsblk/raid-loop.json
+@@ -0,0 +1,49 @@
++{
++   "blockdevices": [
++      {
++         "name": "loop0",
++         "mountpoint": "/snap/core22/1380",
++         "label": null
++      },{
++         "name": "sda",
++         "mountpoint": null,
++         "label": null,
++         "children": [
++            {
++               "name": "sda1",
++               "mountpoint": null,
++               "label": "server:0",
++               "children": [
++                  {
++                     "name": "md0",
++                     "mountpoint": "/data",
++                     "label": "DATA"
++                  }
++               ]
++            }
++         ]
++      },{
++         "name": "sdb",
++         "mountpoint": null,
++         "label": null,
++         "children": [
++            {
++               "name": "sdb1",
++               "mountpoint": null,
++               "label": "server:0",
++               "children": [
++                  {
++                     "name": "md0",
++                     "mountpoint": "/data",
++                     "label": "DATA"
++                  }
++               ]
++            }
++         ]
++      },{
++         "name": "sdc",
++         "mountpoint": null,
++         "label": null
++      }
++   ]
++}
 diff --git a/resources/generic/smartctl/ata-crucial-ssd.json b/resources/generic/smartctl/ata-crucial-ssd.json
 new file mode 100644
 index 000000000..3a5cb6278
@@ -40897,22 +41209,24 @@ index 5bb712d10..e62aa4880 100755
      if !$ENV{TEST_AUTHOR};
 diff --git a/t/tasks/inventory/generic/storages/smarthealth.t b/t/tasks/inventory/generic/storages/smarthealth.t
 new file mode 100644
-index 000000000..71a0cc500
+index 000000000..d06a99f29
 --- /dev/null
 +++ b/t/tasks/inventory/generic/storages/smarthealth.t
-@@ -0,0 +1,205 @@
+@@ -0,0 +1,302 @@
 +#!/usr/bin/perl
 +
 +use strict;
 +use warnings;
 +use lib 't/lib';
 +
++use English qw(-no_match_vars);
 +use Test::Deep;
 +use Test::Exception;
 +use Test::More;
 +use Test::NoWarnings;
 +
 +use GLPI::Test::Inventory;
++use GLPI::Agent::Tools qw(canRun);
 +use GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth;
 +
 +my %health_tests = (
@@ -41037,11 +41351,64 @@ index 000000000..71a0cc500
 +    [ 'linux: name match', 'linux', \@linux_storages, '/dev/sda', 'S3Z9NB0K000000X', 0 ],
 +);
 +
++my %linux_volume_tests = (
++    'debian-vm' => {
++        nvme0n1 => [ '/boot/efi', '/' ],
++    },
++    'lvm-crypt' => {
++        nvme0n1 => [ '/boot/efi', '/boot', '/', '/home (home)' ],
++        sda     => [ '/srv/data (data)' ],
++    },
++    'raid-loop' => {
++        loop0   => [ '/snap/core22/1380' ],
++        sda     => [ '/data (DATA)' ],
++        sdb     => [ '/data (DATA)' ],
++    },
++);
++
++my @windows_partitions = (
++    {
++        Antecedent => '\\\\DESKTOP\\root\\cimv2:Win32_DiskPartition.DeviceID="Disk #0, Partition #2"',
++        Dependent  => '\\\\DESKTOP\\root\\cimv2:Win32_LogicalDisk.DeviceID="C:"',
++    },
++    {
++        Antecedent => '\\\\DESKTOP\\root\\cimv2:Win32_DiskPartition.DeviceID="Disk #1, Partition #1"',
++        Dependent  => '\\\\DESKTOP\\root\\cimv2:Win32_LogicalDisk.DeviceID="e:"',
++    },
++    {
++        Antecedent => '\\\\DESKTOP\\root\\cimv2:Win32_DiskPartition.DeviceID="Disk #1, Partition #0"',
++        Dependent  => '\\\\DESKTOP\\root\\cimv2:Win32_LogicalDisk.DeviceID="D:"',
++    },
++    { Antecedent => 'unexpected', Dependent => 'value' },
++    'not an object',
++);
++
++my @windows_logicaldisks = (
++    { DeviceID => 'C:', VolumeName => '' },
++    { DeviceID => 'D:', VolumeName => 'Data' },
++    { DeviceID => 'E:', VolumeName => ' Backup ' },
++);
++
++my @disk_key_tests = (
++    # [ test name, os, storage name, smartctl device, expected key ]
++    [ 'windows: MSFT_PhysicalDisk name', 'MSWin32', 'PhysicalDisk1', '/dev/sda', 1 ],
++    [ 'windows: Win32_DiskDrive name', 'MSWin32', '\\\\.\\PHYSICALDRIVE3', '/dev/sda', 3 ],
++    [ 'windows: other name uses smartctl device', 'MSWin32', 'HP Logical Volume', '/dev/sdc', 2 ],
++    [ 'windows: no disk number', 'MSWin32', undef, '/dev/csmi0,1', undef ],
++    [ 'linux: storage name', 'linux', 'sda', '/dev/sda', 'sda' ],
++    [ 'linux: nvme namespace', 'linux', 'nvme0n1', '/dev/nvme0', 'nvme0n1' ],
++    [ 'linux: no storage name, nvme controller', 'linux', undef, '/dev/nvme0', 'nvme0n1' ],
++    [ 'linux: unusable storage name', 'linux', 'Some Model', '/dev/sdb', 'sdb' ],
++    [ 'linux: megaraid device', 'linux', undef, '/dev/bus/0', undef ],
++);
++
 +plan tests =>
-+    (2 * scalar keys %health_tests) +
-+    (scalar keys %scan_tests)       +
-+    (scalar @match_tests)           +
-+    6;
++    (2 * scalar keys %health_tests)     +
++    (scalar keys %scan_tests)           +
++    (scalar @match_tests)               +
++    (scalar keys %linux_volume_tests)   +
++    (scalar @disk_key_tests)            +
++    10;
 +
 +# Only existing modules can be listed as dependencies, or the inventory is aborted
 +ok(
@@ -41106,3 +41473,45 @@ index 000000000..71a0cc500
 +my $storages = $inventory->getSection('STORAGES');
 +my ($samsung) = grep { $_->{NAME} eq 'ata-samsung-ssd' } @{$storages};
 +is($samsung->{SMART_HEALTH}, 93, "SMART_HEALTH kept in STORAGES section");
++
++lives_ok {
++    $inventory->addEntry(section => 'STORAGES', entry => { NAME => 'volumes', SMART_VOLUMES => 'C: (Windows), D: (Data)' });
++} "SMART_VOLUMES: registering";
++my ($with_volumes) = grep { $_->{NAME} eq 'volumes' } @{$inventory->getSection('STORAGES')};
++is($with_volumes->{SMART_VOLUMES}, 'C: (Windows), D: (Data)', "SMART_VOLUMES kept in STORAGES section");
++
++foreach my $test (sort keys %linux_volume_tests) {
++    my $volumes = GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth::_getVolumes(
++        osname  => 'linux',
++        file    => "resources/generic/lsblk/$test.json",
++    );
++    cmp_deeply($volumes, $linux_volume_tests{$test}, "$test: volumes");
++}
++
++cmp_deeply(
++    GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth::_getVolumes(
++        osname          => 'MSWin32',
++        partitions      => \@windows_partitions,
++        logicaldisks    => \@windows_logicaldisks,
++    ),
++    { 0 => [ 'C:' ], 1 => [ 'D: (Data)', 'E: (Backup)' ] },
++    "windows: volumes"
++);
++
++foreach my $test (@disk_key_tests) {
++    my ($name, $os, $storage, $device, $expected) = @{$test};
++    is(
++        GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth::_getDiskKey($storage, $device, $os),
++        $expected,
++        $name
++    );
++}
++
++# Real lsblk output, on Linux test hosts
++SKIP: {
++    skip ('live lsblk check only runs on Linux', 1) unless $OSNAME eq 'linux' && canRun('lsblk');
++    my $live = GLPI::Agent::Task::Inventory::Generic::Storages::SmartHealth::_getVolumes(osname => 'linux');
++    my @bad = grep { ref($_) ne 'ARRAY' || grep { !m{^/} } @{$_} } values(%{$live});
++    ok(ref($live) eq 'HASH' && !@bad, "live lsblk volumes");
++    diag("lsblk volumes: " . join('; ', map { "$_ => @{$live->{$_}}" } sort keys(%{$live})));
++}

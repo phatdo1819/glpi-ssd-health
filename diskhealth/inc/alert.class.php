@@ -69,7 +69,7 @@ class PluginDiskhealthAlert
         }
 
         $iterator = $DB->request([
-            'SELECT' => ['model', 'serial', 'status', 'problems'],
+            'SELECT' => ['model', 'serial', 'volumes', 'status', 'problems'],
             'FROM'   => PluginDiskhealthDisk::getTable(),
             'WHERE'  => [
                 'itemtype' => Computer::class,
@@ -86,14 +86,14 @@ class PluginDiskhealthAlert
         $worst  = PluginDiskhealthDisk::STATUS_REPLACE_SOON;
         $lines  = [];
         foreach ($iterator as $row) {
-            $worst   = min($worst, (int) $row['status']);
-            $lines[] = sprintf(
-                '%s%s: %s. %s',
-                $row['model'] ?? __('Unknown model', 'diskhealth'),
-                $row['serial'] === null ? '' : ' (' . $row['serial'] . ')',
-                $labels[(int) $row['status']],
-                $row['problems']
-            );
+            $worst = min($worst, (int) $row['status']);
+            $drive = ($row['model'] ?? __('Unknown model', 'diskhealth'))
+                . ($row['serial'] === null ? '' : ' (' . $row['serial'] . ')');
+            if (!empty($row['volumes'])) {
+                // "C:, D: (Data) on Samsung SSD 870 EVO (S6PW...)"
+                $drive = sprintf(__('%1$s on %2$s', 'diskhealth'), $row['volumes'], $drive);
+            }
+            $lines[] = sprintf('%s: %s. %s', $drive, $labels[(int) $row['status']], $row['problems']);
         }
 
         self::showAlertBox(
@@ -403,6 +403,7 @@ class PluginDiskhealthAlert
             Computer::getTypeName(1)           => $drive['computer_name'],
             __('Hard drive', 'diskhealth')     => $drive['model'],
             __('Serial number')                => $drive['serial'],
+            __('Volumes', 'diskhealth')        => $drive['volumes'],
             __('Health', 'diskhealth')         => $drive['health'] === null ? '' : $drive['health'] . '%',
             __('Status')                       => $labels[(int) $drive['status']] ?? '',
             __('Problems', 'diskhealth')       => $drive['problems'],

@@ -131,6 +131,7 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
             'is_recursive'              => (int) ($item->fields['is_recursive'] ?? 0),
             'model'                     => self::cleanString($input['model'] ?? $input['designation'] ?? null, 255),
             'serial'                    => self::cleanString($input['serial'] ?? $item->fields['serial'] ?? null, 255),
+            'volumes'                   => self::cleanString($input['smart_volumes'] ?? null, 255),
             'drive_type'                => self::cleanEnum($input['smart_type'] ?? null, ['SSD', 'HDD']),
             'health'                    => self::cleanInt($input['smart_health'] ?? null, 0, 100),
             'health_source'             => self::cleanString($input['smart_health_source'] ?? null, 100),
@@ -430,7 +431,11 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
             $serial = $row['serial'] ?? $row['device_serial'];
 
             echo '<tr class="tab_bg_1">';
-            echo '<td>' . htmlspecialchars((string) $model) . '</td>';
+            echo '<td>' . htmlspecialchars((string) $model);
+            if (!empty($row['volumes'])) {
+                echo '<br><small class="text-muted">' . htmlspecialchars($row['volumes']) . '</small>';
+            }
+            echo '</td>';
             echo '<td>' . htmlspecialchars((string) $serial) . '</td>';
 
             if ($row['id'] === null) {
@@ -446,7 +451,11 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
             }
 
             echo '<td>' . htmlspecialchars((string) $row['drive_type']) . '</td>';
-            echo '<td>' . self::getHealthBar($row['health'] === null ? null : (int) $row['health'], (string) $row['health_source']) . '</td>';
+            echo '<td>' . self::getHealthBar($row['health'] === null ? null : (int) $row['health'], (string) $row['health_source']);
+            if ($row['health'] !== null && !empty($row['health_source'])) {
+                echo '<small class="text-muted">' . htmlspecialchars($row['health_source']) . '</small>';
+            }
+            echo '</td>';
             echo $nowrap . self::getStatusBadge((int) $row['status']);
             if ((int) $row['tickets_id'] > 0) {
                 echo '<br><a href="' . htmlspecialchars(Ticket::getFormURLWithID((int) $row['tickets_id'])) . '">'
@@ -690,6 +699,15 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
             'field'         => 'name',
             'name'          => Ticket::getTypeName(1),
             'datatype'      => 'itemlink',
+            'massiveaction' => false,
+        ];
+
+        $tab[] = [
+            'id'            => '20',
+            'table'         => $table,
+            'field'         => 'volumes',
+            'name'          => __('Volumes', 'diskhealth'),
+            'datatype'      => 'string',
             'massiveaction' => false,
         ];
 

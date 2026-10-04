@@ -1,10 +1,11 @@
 # GLPI Agent: SSD health module
 
-This module makes GLPI Agent report SSD health with every inventory, the same idea as CrystalDiskInfo's "Health %": remaining rated life, SMART status and error counters. It adds the data to the hard drives the agent already reports. The **Disk health** GLPI plugin (`../diskhealth`) stores and displays it.
+This module makes GLPI Agent report SSD health with every inventory, the same idea as CrystalDiskInfo's "Health %": remaining rated life, SMART status and error counters. It also reports the volumes on each disk, as drive letters and labels on Windows (`C:, D: (Data)`) and mount points on Linux (`/, /home`), so you know which disk to replace. It adds the data to the hard drives the agent already reports. The **Disk health** GLPI plugin (`../diskhealth`) stores and displays it.
 
 | File | What it is |
 |---|---|
-| `SmartHealth.pm` | The agent module. Works on Windows, Linux and macOS. |
+| `SmartHealth.pm` | The agent module. Works on Windows, Linux and macOS; volumes are reported on Windows and Linux. |
+| `linux/install-smarthealth.sh` | Linux install script: adds the module and installs smartmontools if needed |
 | `windows\smartctl.exe`, `windows\drivedb.h` | smartmontools 7.5, 64-bit, and its drive database. Checksums match the official release. |
 | `LICENSE-glpi-agent.txt` | License of the module: GPL-2.0-or-later, the same as GLPI Agent |
 | `windows\smartmontools-COPYING.txt` | smartmontools license: GPL-2.0-or-later |
@@ -38,14 +39,32 @@ With Group Policy:
 
 ### Linux
 
-1. Install smartmontools 7.0 or later: `apt install smartmontools` or `dnf install smartmontools`.
-2. Copy the module:
+Copy this folder to the PC and run the install script as root:
 
-   ```sh
-   cp SmartHealth.pm /usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/
-   ```
+```sh
+sudo sh linux/install-smarthealth.sh
+```
 
-The snap package of the agent is read-only, so it needs option B.
+The script:
+
+1. finds GLPI Agent, installed from its `.deb` or `.rpm` packages or its Linux installer;
+2. installs smartmontools with apt, dnf, yum or zypper if `smartctl` is missing, and checks it's version 7.0 or later;
+3. copies `SmartHealth.pm` to `/usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/`;
+4. runs a quick inventory to check that SMART data is found.
+
+Run it again to update the module. `sudo sh linux/install-smarthealth.sh --uninstall` removes the module and leaves smartmontools.
+
+For many PCs, run the script through your usual tool, such as Ansible, or over SSH, for example:
+
+```sh
+for pc in pc1 pc2 pc3; do
+    scp -r glpi-agent-addon "$pc:/tmp/" && ssh "$pc" 'sudo sh /tmp/glpi-agent-addon/linux/install-smarthealth.sh'
+done
+```
+
+To do it by hand instead: install smartmontools 7.0 or later, then copy `SmartHealth.pm` to the folder above.
+
+The agent's snap package is read-only and can't take the module.
 
 ### Check it on one PC
 
@@ -61,7 +80,7 @@ In the JSON output, your SSDs should now have fields such as `"smart_health": 93
 
 ## Option B: your own agent installer
 
-**The installer for 1.20 is ready:** `GLPI-Agent-1.20-smarthealth-x64.msi` on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest). On the test VM, the agent from the unpacked MSI reported the same SMART data as option A. It hasn't been installed on a PC yet.
+**The installer for 1.20 is ready:** `GLPI-Agent-1.20-smarthealth-1.1-x64.msi` on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest). It has this add-on's module 1.1, with the volumes. On the test VM, the agent from the unpacked MSI reported the same SMART data and volumes as option A. It hasn't been installed on a PC yet. The first build, `GLPI-Agent-1.20-smarthealth-x64.msi` on the 1.0.0 and 1.1.0 releases, has no volumes.
 
 It's built from your public fork: <https://github.com/phatdo1819/glpi-agent>, branch **`smart-health`**. That branch is GLPI Agent 1.20 plus this change, which:
 
@@ -79,16 +98,19 @@ GitHub deletes artifacts after 90 days, so keep your own copy of each MSI you de
 About the MSI:
 
 - It's unsigned, unlike the official MSI, which Teclib signs. That's fine for Group Policy software installation, but Windows SmartScreen warns if you run it by hand. If your PCs block unsigned installers, allow this file by its hash or sign it with your own code-signing certificate.
-- Programs and Features lists it as **GLPI Agent 1.20 (git07921671)**, and the agent reports its version as `1.20-git07921671`.
+- Programs and Features lists it as **GLPI Agent 1.20 (git05c29b27)**, and the agent reports its version as `1.20-git05c29b27`. The part after `git` is the fork commit it was built from.
 - It replaces any installed GLPI Agent, official or custom, the same way the official MSI does.
 - It keeps the installed agent's settings, such as the server and tag, unless you pass new ones or `CONFIG=reset`. That's the official installer's behavior, unchanged.
 - It takes the same install options as the official MSI, for example `SERVER=...`.
+
+On Linux, use option A. The fork also builds Linux packages, but they carry a different version number from the official ones, so package managers would mix them up with official updates.
 
 ## When GLPI Agent is upgraded
 
 **Option A: nothing to redo.**
 
 - The agent installer keeps these files during an upgrade. It only removes the files it installed itself. If a reinstall does remove them, Group Policy copies them back.
+- On Linux, a package upgrade also leaves the module in place, as the package doesn't own that file. If the agent is ever removed and reinstalled, run the install script again.
 - The module only uses long-standing parts of the agent: the list of disks, running a command, and reading JSON.
 - It only waits for the storage modules that actually exist in the installed agent. A future release that renames or removes one of them therefore can't block the inventory.
 - The agent runs each module separately. If a future version ever breaks this one, inventories carry on, just without SMART data.
@@ -111,7 +133,8 @@ The push starts the build. Download the MSI from the Actions run as above.
 
 ## When this module is updated
 
-Put the new `SmartHealth.pm` on the share. The Replace item copies it at the next policy refresh, and the agent uses it at its next inventory. No restart is needed.
+- **Windows:** put the new `SmartHealth.pm` on the share. The Replace item copies it at the next policy refresh, and the agent uses it at its next inventory. No restart is needed.
+- **Linux:** run the install script from the new folder.
 
 ## Licenses
 
@@ -119,6 +142,7 @@ Put the new `SmartHealth.pm` on the share. The Replace item copies it at the nex
 |---|---|---|
 | `SmartHealth.pm`, the patch | GPL-2.0-or-later, like GLPI Agent | `LICENSE-glpi-agent.txt` |
 | smartctl, drivedb.h | GPL-2.0-or-later (smartmontools) | `windows\smartmontools-COPYING.txt`, and the source code in `third-party/` at the repository root. The installer build (option B) also puts the license next to smartctl.exe. |
+| `linux/install-smarthealth.sh` | MIT | `LICENSE` at the repository root |
 | Disk health GLPI plugin | MIT | `diskhealth\LICENSE` |
 
 Using and deploying these inside your organization carries no obligations. If you give the agent or smartctl to another organization, for example as a service provider deploying to client PCs, the GPL requires you to also offer them the source code. That means:
@@ -147,6 +171,7 @@ These fields are added to each disk in the `storages` section of the inventory. 
 | `smart_media_errors` | NVMe media and data integrity errors |
 | `smart_reallocated_sectors`, `smart_pending_sectors`, `smart_uncorrectable_sectors` | SATA attributes 5, 197 and 198 |
 | `smart_failing_attributes` | SATA attributes currently below their failure threshold |
+| `smart_volumes` | Volumes on the disk: drive letters and labels on Windows, such as `C:, D: (Data)`; mount points and labels on Linux, such as `/boot/efi, /` |
 
 How the health % is chosen, in order:
 
@@ -154,5 +179,7 @@ How the health % is chosen, in order:
 2. The standard SATA device statistic "Percentage Used Endurance Indicator".
 3. Vendor attributes named like `SSD_Life_Left`, `Percent_Lifetime_Remain`, `Media_Wearout_Indicator` or `Wear_Leveling_Count`.
 4. The SAS endurance indicator.
+
+CrystalDiskInfo shows a % only for SSDs it has a rule for, and just "Good" for the others. The module can still find a % for many of those: the standard indicator in step 2 is the drive's own wear counter, and smartmontools' drive database names the vendor attributes of thousands of models. GLPI shows the source under each drive's %, so you can see which one was used.
 
 Disks that smartctl can't read are skipped, and their inventory is unchanged.

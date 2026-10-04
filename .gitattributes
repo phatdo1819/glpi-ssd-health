@@ -4,3 +4,7 @@
 drivedb.h   -text
 *.exe       binary
 *.png       binary
+
+# Linux runs these: keep LF line endings even when checked out on Windows
+*.sh        text eol=lf
+*.pm        text eol=lf

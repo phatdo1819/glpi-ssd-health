@@ -1,22 +1,22 @@
 # SSD health in GLPI: overview and test plan
 
-See how much life each SSD has left, like CrystalDiskInfo's Health %, for every PC in GLPI, and get a list of drives to replace.
+See how much life each SSD has left, like CrystalDiskInfo's Health %, for every Windows and Linux PC in GLPI, with the drive letters or mount points on each disk, and get a list of drives to replace.
 
 | Folder / file | What it is | Goes on |
 |---|---|---|
 | [`ssd-health/`](ssd-health/) | Standalone script that writes a CSV report through Group Policy. It works without GLPI. | PCs, through a GPO scheduled task |
-| [`glpi-agent-addon/`](glpi-agent-addon/) | GLPI Agent module plus smartctl, to add to your existing agents (option A) | Each PC, by copying 3 files through Group Policy |
+| [`glpi-agent-addon/`](glpi-agent-addon/) | GLPI Agent module plus smartctl, to add to your existing agents (option A) | Windows PCs: 3 files copied through Group Policy. Linux PCs: its install script. |
 | [`diskhealth/`](diskhealth/) | GLPI plugin: each drive's health, a fleet list, and alerts for admins | GLPI server, under `glpi/plugins/` |
 | [`glpi-agent-smarthealth.patch`](glpi-agent-smarthealth.patch) | The agent change as a patch, for rebuilding the custom agent when a new agent version comes out | Nothing |
 | [`screenshots/`](screenshots/) | What the plugin looks like in GLPI 11 and 10 | Nothing |
 
 - **Ready-to-use packages** (plugin archives and zipped folders) are on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest).
-- **The custom agent installer (option B)**, `GLPI-Agent-1.20-smarthealth-x64.msi`, is on the same page. It's GLPI Agent 1.20 plus this change, built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`. The fork's [Releases page](https://github.com/phatdo1819/glpi-agent/releases/latest) has the same file.
+- **The custom agent installer (option B)**, `GLPI-Agent-1.20-smarthealth-1.1-x64.msi`, is on the same page. It's GLPI Agent 1.20 plus this change, built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`. The fork's [Releases page](https://github.com/phatdo1819/glpi-agent/releases/latest) has the same file.
 
 How the pieces fit together:
 
 1. On each PC, the agent module runs smartctl during the normal inventory.
-2. It adds `smart_*` fields to each disk in the inventory.
+2. It adds `smart_*` fields to each disk in the inventory, including the volumes on the disk.
 3. GLPI accepts these extra fields as they are; nothing in GLPI itself needs changing.
 4. The plugin saves the fields and shows each drive's health on the computer page and in the fleet list.
 5. It tells admins about drives to replace in four ways:
@@ -39,25 +39,29 @@ How the pieces fit together:
       Check that each SSD now has `smart_health`.
    3. Open CrystalDiskInfo on the same PC and compare its Health % with `smart_health`.
    4. Send an inventory now: open <http://127.0.0.1:62354/now> on that PC, or run `"C:\Program Files\GLPI-Agent\glpi-agent.bat" --force`.
-3. **GLPI.** Open the PC and check its **Disk health** tab. Then check **Assets > Disk health**.
-4. **Alerts.** Healthy drives trigger no alerts, so to see them, set "Replace soon" to 100 in **Setup > Plugins > Disk health**. Every SSD that reports its wear then counts as "replace soon". Then check:
+3. **A Linux PC**, if you have one with an SSD: copy the `glpi-agent-addon` folder to it and run `sudo sh linux/install-smarthealth.sh` from that folder. The script says whether it found SMART data. Then send an inventory with `sudo glpi-agent --force`.
+4. **GLPI.** Open each PC and check its **Disk health** tab, including the drive letters or mount points under each drive. Then check **Assets > Disk health**.
+5. **Alerts.** Healthy drives trigger no alerts, so to see them, set "Replace soon" to 100 in **Setup > Plugins > Disk health**. Every SSD that reports its wear then counts as "replace soon". Then check:
    1. **Warnings:** the home page and the PC's page show a warning.
    2. **Email:** turn on email notifications in GLPI (see [`diskhealth/README.md`](diskhealth/README.md#email-alerts)), then run **Setup > Automatic actions > diskhealthalert > Execute**. The administrator address gets the email.
    3. **Tickets**, if you want them: set them to "When it needs replacing soon or now", then run the action again.
 
    Set "Replace soon" back to 30 afterwards.
-5. **Report back** for each drive: the model, CrystalDiskInfo's %, GLPI's %, and any drive showing **Unknown** or **No SMART data**.
+6. **Report back** for each drive: the model, CrystalDiskInfo's %, GLPI's % and its source (shown under the %), and any drive showing **Unknown** or **No SMART data**.
 
 After that, roll out the agent files with the Group Policy steps in [`glpi-agent-addon/README.md`](glpi-agent-addon/README.md).
 
 ## What was tested
 
-Everything below ran on a Windows 11 test VM:
+You tested the first version on two real PCs: the health % nearly matched CrystalDiskInfo's.
 
-- **Agent module:** 36 unit tests pass on both agent 1.20 and the development branch. The existing inventory tests still pass.
-- **Real agent run:** stock GLPI Agent 1.20 with the module ran a real inventory here and sent it to both test servers. This VM has a VMware virtual NVMe disk, which the plugin flags as a virtual disk.
+Everything below ran on a Windows 11 test VM and a Debian 13 test VM (arm64):
+
+- **Agent module:** 52 unit tests pass on agent 1.20 and the development branch, with Windows' and Debian's Perl. The existing inventory tests still pass.
+- **Real agent runs:** stock GLPI Agent 1.20 with the module ran a real inventory on both VMs and sent it to both test servers. Both VMs have a VMware virtual NVMe disk, which the plugin flags as a virtual disk. The volumes came out as `C:, E: (New Volume)` on Windows and `/boot/efi, /` on Debian.
+- **Linux install script:** on Debian, it installed smartmontools 7.4 and the module, and its check found the SMART data. Reinstalling the agent package leaves the module in place.
 - **Missing module:** the inventory still works when one of the storage modules the health module waits for is missing, as could happen in a future agent release.
-- **Custom agent installer (option B):** GitHub Actions ran the agent's tests and built the installers for Windows, Linux and macOS without errors. The Windows MSI contains the module, smartctl 7.5 and drivedb.h, and has the official upgrade code. The agent from the unpacked MSI reported the same SMART data as option A.
+- **Custom agent installer (option B):** GitHub Actions ran the agent's tests and built the installers for Windows, Linux and macOS without errors. The Windows MSI contains the module, smartctl 7.5 and drivedb.h, and has the official upgrade code. The agent from the unpacked MSI reported the same SMART data and volumes as option A.
 - **GLPI 10.0.28 and 11.0.11** (PHP 8.3, MariaDB 11.4):
   - plugin install and uninstall
   - data from the real agent, plus seven simulated drives covering every status
@@ -65,7 +69,8 @@ Everything below ran on a Windows 11 test VM:
   - the daily cleanup task
   - the computer tab and the fleet list, including sorting, filters and CSV export
   - the settings page
-  - upgrading the plugin from 1.0.0 to 1.1.0, keeping its data
+  - upgrading the plugin from 1.0.0 to 1.1.0 and from 1.1.0 to 1.2.0, keeping its data
+  - volumes in the tab, the list, the warnings, the emails and the tickets (1.2.0)
 - **Alerts (1.1.0)**, on both GLPI versions:
   - the home page and computer warnings, and turning them off
   - both dashboard cards
@@ -76,8 +81,8 @@ Everything below ran on a Windows 11 test VM:
 
 What was **not** tested:
 
-- Real physical SSDs, which is what the test plan above covers.
-- Linux agents.
+- Linux PCs with physical disks, and distributions other than Debian. The install script also supports dnf, yum and zypper.
+- GLPI 11.0.11 answers the Debian VM's inventory with an error about its processors, because this arm64 VM reports them without a model. The disks are saved anyway. Linux PCs with Intel or AMD processors report a model, so they shouldn't hit this, but that wasn't tested.
 - Several entities and user profiles.
 - A large number of PCs.
 - Installing the custom agent installer on a PC. It was only unpacked here.
@@ -90,7 +95,7 @@ What was **not** tested:
 | GLPI Agent is upgraded | **Option A:** nothing. The files stay in place, and Group Policy copies them back if they're removed. Check one PC with `glpi-inventory --partial storage,storage_health`. **Option B:** re-apply the patch to the new release and rebuild the MSI. |
 | GLPI is upgraded within 10.0.x or 11.0.x | Nothing |
 | GLPI moves to a newer branch (11.1, 12…) | Test the plugin, then raise `PLUGIN_DISKHEALTH_MAX_GLPI` in `diskhealth/setup.php` |
-| The module changes | Replace `SmartHealth.pm` on the share |
+| The module changes | **Windows:** replace `SmartHealth.pm` on the share. **Linux:** run the install script from the new folder. |
 
 ## License
 

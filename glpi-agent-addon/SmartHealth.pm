@@ -6,6 +6,7 @@ use warnings;
 use parent 'GLPI::Agent::Task::Inventory::Module';
 
 use Cpanel::JSON::XS;
+use UNIVERSAL::require;
 
 use GLPI::Agent::Tools;
 
@@ -72,7 +73,7 @@ sub doInventory {
     my $storages = $inventory->getSection('STORAGES');
     return unless ref($storages) eq 'ARRAY' && @{$storages};
 
-    my %done;
+    my (%done, $volumes);
     foreach my $device (_getDevices(logger => $logger)) {
         my $data = _getSmartData(
             command => "smartctl -x -j -d $device->{type} \"$device->{name}\"",
@@ -100,6 +101,12 @@ sub doInventory {
         foreach my $key (keys(%{$health})) {
             $storage->{$key} = $health->{$key};
         }
+
+        # Drive letters or mount points on the disk, to know which disk to replace
+        $volumes //= _getVolumes(logger => $logger);
+        my $disk = _getDiskKey($storage->{NAME}, $device->{name});
+        $storage->{SMART_VOLUMES} = join(', ', @{$volumes->{$disk}})
+            if defined($disk) && $volumes->{$disk};
     }
 }
 
@@ -367,17 +374,9 @@ sub _nameMatch {
     return 0 unless defined($device) && defined($name);
 
     if (($osname // OSNAME) eq 'MSWin32') {
-        # smartctl names Windows disks /dev/sda, /dev/sdb, ... in PhysicalDrive0, 1, ... order
-        my ($letters) = $device =~ m{^/dev/sd([a-z]+)$}
-            or return 0;
-        my $index = 0;
-        foreach my $letter (split(//, $letters)) {
-            $index = $index * 26 + ord($letter) - ord('a') + 1;
-        }
-        $index--;
-        my ($number) = $name =~ /^(?:PhysicalDisk|\\\\\.\\PhysicalDrive)(\d+)$/i
-            or return 0;
-        return $number == $index;
+        my $index = _getWindowsDiskIndex($device);
+        my $number = _getWindowsDiskNumber($name);
+        return defined($index) && defined($number) && $number == $index;
     }
 
     my ($basename) = $device =~ m{^/dev/(.+)$}
@@ -386,6 +385,145 @@ sub _nameMatch {
 
     # smartctl uses NVMe controller device, storage name is its first namespace
     return $basename =~ /^nvme\d+$/ && $name eq $basename . 'n1';
+}
+
+# smartctl names Windows disks /dev/sda, /dev/sdb, ... in PhysicalDrive0, 1, ... order
+sub _getWindowsDiskIndex {
+    my ($device) = @_;
+
+    my ($letters) = ($device // '') =~ m{^/dev/sd([a-z]+)$}
+        or return;
+    my $index = 0;
+    foreach my $letter (split(//, $letters)) {
+        $index = $index * 26 + ord($letter) - ord('a') + 1;
+    }
+
+    return $index - 1;
+}
+
+# Windows storages are named PhysicalDisk0 or \\.\PHYSICALDRIVE0
+sub _getWindowsDiskNumber {
+    my ($name) = @_;
+
+    my ($number) = ($name // '') =~ /^(?:PhysicalDisk|\\\\\.\\PhysicalDrive)(\d+)$/i
+        or return;
+
+    return $number;
+}
+
+# Key of a disk in _getVolumes() result: Windows disk number or Linux block device name
+sub _getDiskKey {
+    my ($name, $device, $osname) = @_;
+
+    if (($osname // OSNAME) eq 'MSWin32') {
+        return _getWindowsDiskNumber($name) // _getWindowsDiskIndex($device);
+    }
+
+    return $name if defined($name) && $name =~ /^[\w.-]+$/;
+
+    my ($basename) = ($device // '') =~ m{^/dev/(\w+)$}
+        or return;
+
+    return $basename =~ /^nvme\d+$/ ? $basename . 'n1' : $basename;
+}
+
+# Volumes on each disk, like "C: (Windows)" on Windows or "/home (data)" on Linux
+sub _getVolumes {
+    my (%params) = @_;
+
+    my $osname = delete($params{osname}) // OSNAME;
+
+    return _getWindowsVolumes(%params) if $osname eq 'MSWin32';
+    return _getLinuxVolumes(%params) if $osname eq 'linux';
+
+    return {};
+}
+
+sub _getWindowsVolumes {
+    my (%params) = @_;
+
+    # Tests provide WMI objects
+    my $partitions   = $params{partitions};
+    my $logicaldisks = $params{logicaldisks};
+    unless ($partitions) {
+        GLPI::Agent::Tools::Win32->require()
+            or return {};
+        $partitions = [ GLPI::Agent::Tools::Win32::getWMIObjects(
+            class      => 'Win32_LogicalDiskToPartition',
+            properties => [ qw/Antecedent Dependent/ ],
+            logger     => $params{logger},
+        ) ];
+        $logicaldisks = [ GLPI::Agent::Tools::Win32::getWMIObjects(
+            class      => 'Win32_LogicalDisk',
+            properties => [ qw/DeviceID VolumeName/ ],
+            logger     => $params{logger},
+        ) ];
+    }
+
+    my %labels;
+    foreach my $logicaldisk (@{$logicaldisks // []}) {
+        next unless ref($logicaldisk) eq 'HASH' && defined($logicaldisk->{DeviceID});
+        $labels{uc($logicaldisk->{DeviceID})} = $logicaldisk->{VolumeName};
+    }
+
+    my %volumes;
+    foreach my $link (@{$partitions}) {
+        next unless ref($link) eq 'HASH';
+        # Antecedent: \\HOST\root\cimv2:Win32_DiskPartition.DeviceID="Disk #0, Partition #1"
+        # Dependent:  \\HOST\root\cimv2:Win32_LogicalDisk.DeviceID="C:"
+        my ($disk) = ($link->{Antecedent} // '') =~ /Disk #(\d+),/
+            or next;
+        my ($letter) = ($link->{Dependent} // '') =~ /DeviceID="([A-Za-z]:)"/
+            or next;
+        $letter = uc($letter);
+        push @{$volumes{$disk}}, _getVolumeName($letter, $labels{$letter});
+    }
+
+    return { map { $_ => [ sort @{$volumes{$_}} ] } keys(%volumes) };
+}
+
+sub _getLinuxVolumes {
+    my (%params) = (
+        command => 'lsblk -J -o NAME,MOUNTPOINT,LABEL',
+        @_
+    );
+
+    my $data = _decode(scalar(getAllLines(%params)));
+    return {} unless $data && ref($data->{blockdevices}) eq 'ARRAY';
+
+    my %volumes;
+    foreach my $device (@{$data->{blockdevices}}) {
+        next unless ref($device) eq 'HASH' && defined($device->{name});
+        # LVM volume groups spanning several partitions are listed under each of them
+        my %seen;
+        my @mounts = grep { !$seen{$_}++ } _getMounts($device);
+        $volumes{$device->{name}} = \@mounts if @mounts;
+    }
+
+    return \%volumes;
+}
+
+# Mount points of a block device and what it holds: partitions, RAID, LVM, encryption
+sub _getMounts {
+    my ($device) = @_;
+
+    my @mounts;
+    push @mounts, _getVolumeName($device->{mountpoint}, $device->{label})
+        if defined($device->{mountpoint}) && $device->{mountpoint} =~ m{^/};
+
+    if (ref($device->{children}) eq 'ARRAY') {
+        push @mounts, map { _getMounts($_) } grep { ref($_) eq 'HASH' } @{$device->{children}};
+    }
+
+    return @mounts;
+}
+
+sub _getVolumeName {
+    my ($volume, $label) = @_;
+
+    $label = trimWhitespace($label) if defined($label);
+
+    return defined($label) && length($label) ? "$volume ($label)" : $volume;
 }
 
 1;

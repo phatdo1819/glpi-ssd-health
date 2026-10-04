@@ -28,6 +28,7 @@ function plugin_diskhealth_install()
                 `is_recursive` tinyint NOT NULL DEFAULT '0',
                 `model` varchar(255) DEFAULT NULL,
                 `serial` varchar(255) DEFAULT NULL,
+                `volumes` varchar(255) DEFAULT NULL,
                 `drive_type` varchar(10) DEFAULT NULL,
                 `health` tinyint unsigned DEFAULT NULL,
                 `health_source` varchar(100) DEFAULT NULL,
@@ -63,11 +64,12 @@ function plugin_diskhealth_install()
         );
     }
 
-    // Upgrade from 1.0.0: alert and ticket tracking
+    // Upgrades: alert and ticket tracking (1.1.0), volumes on each disk (1.2.0)
     $new_fields = [
         'alerted_status' => 'tinyint DEFAULT NULL AFTER `failing_attributes`',
         'date_alert'     => 'timestamp NULL DEFAULT NULL AFTER `alerted_status`',
         'tickets_id'     => "int {$sign} NOT NULL DEFAULT '0' AFTER `date_alert`",
+        'volumes'        => 'varchar(255) DEFAULT NULL AFTER `serial`',
     ];
     foreach ($new_fields as $field => $definition) {
         if (!$DB->fieldExists($table, $field)) {
@@ -85,9 +87,22 @@ function plugin_diskhealth_install()
         Config::setConfigurationValues(PluginDiskhealthConfig::CONTEXT, $missing);
     }
 
-    // Default columns of the disk list (column 1, the drive model, is always shown first)
-    if (countElementsInTable('glpi_displaypreferences', ['itemtype' => PluginDiskhealthDisk::class, 'users_id' => 0]) === 0) {
-        foreach ([3, 4, 12, 5, 6, 7, 8, 9, 14] as $rank => $num) {
+    // Default columns of the disk list (column 1, the drive model, is always shown first).
+    // Columns left as installed by 1.0.0 or 1.1.0 get the Volumes column too.
+    $columns = [];
+    foreach (
+        $DB->request([
+            'SELECT' => ['num'],
+            'FROM'   => 'glpi_displaypreferences',
+            'WHERE'  => ['itemtype' => PluginDiskhealthDisk::class, 'users_id' => 0],
+            'ORDER'  => ['rank'],
+        ]) as $row
+    ) {
+        $columns[] = (int) $row['num'];
+    }
+    if ($columns === [] || $columns === [3, 4, 12, 5, 6, 7, 8, 9, 14]) {
+        $DB->delete('glpi_displaypreferences', ['itemtype' => PluginDiskhealthDisk::class, 'users_id' => 0]);
+        foreach ([3, 20, 4, 12, 5, 6, 7, 8, 9, 14] as $rank => $num) {
             $DB->insert('glpi_displaypreferences', [
                 'itemtype' => PluginDiskhealthDisk::class,
                 'num'      => $num,
@@ -106,8 +121,88 @@ function plugin_diskhealth_install()
     ]);
 
     plugin_diskhealth_install_notification();
+    plugin_diskhealth_update_notification_template();
 
     return true;
+}
+
+/**
+ * Default content of the email alert template
+ *
+ * @return array{text: string, html: string}
+ */
+function plugin_diskhealth_get_template_content(): array
+{
+    $text = <<<TEXT
+##diskhealth.action## - ##diskhealth.entity##
+
+##FOREACHdisks##
+##disk.status##: ##disk.computer## - ##disk.model## (##lang.disk.serial##: ##disk.serial##)
+##lang.disk.volumes##: ##disk.volumes##
+##lang.disk.health##: ##disk.health##. ##disk.problems##
+##disk.computerurl##
+
+##ENDFOREACHdisks##
+##lang.diskhealth.url##: ##diskhealth.url##
+TEXT;
+
+    $html = <<<HTML
+<p><strong>##diskhealth.action## - ##diskhealth.entity##</strong></p>
+<p>##FOREACHdisks##</p>
+<p><strong>##disk.status##</strong>: <a href="##disk.computerurl##">##disk.computer##</a> - ##disk.model## (##lang.disk.serial##: ##disk.serial##)<br />##lang.disk.volumes##: ##disk.volumes##<br />##lang.disk.health##: ##disk.health##. ##disk.problems##</p>
+<p>##ENDFOREACHdisks##</p>
+<p><a href="##diskhealth.url##">##lang.diskhealth.url##</a></p>
+HTML;
+
+    return ['text' => $text, 'html' => $html];
+}
+
+/**
+ * Templates installed by 1.1.0 and never edited get the volumes added in 1.2.0
+ */
+function plugin_diskhealth_update_notification_template(): void
+{
+    /** @var DBmysql $DB */
+    global $DB;
+
+    $text_110 = <<<TEXT
+##diskhealth.action## - ##diskhealth.entity##
+
+##FOREACHdisks##
+##disk.status##: ##disk.computer## - ##disk.model## (##lang.disk.serial##: ##disk.serial##)
+##lang.disk.health##: ##disk.health##. ##disk.problems##
+##disk.computerurl##
+
+##ENDFOREACHdisks##
+##lang.diskhealth.url##: ##diskhealth.url##
+TEXT;
+
+    $iterator = $DB->request([
+        'SELECT'     => ['glpi_notificationtemplatetranslations.id', 'glpi_notificationtemplatetranslations.content_text'],
+        'FROM'       => 'glpi_notificationtemplatetranslations',
+        'INNER JOIN' => [
+            'glpi_notificationtemplates' => [
+                'ON' => [
+                    'glpi_notificationtemplatetranslations' => 'notificationtemplates_id',
+                    'glpi_notificationtemplates'            => 'id',
+                ],
+            ],
+        ],
+        'WHERE'      => ['glpi_notificationtemplates.itemtype' => PluginDiskhealthDisk::class],
+    ]);
+
+    $content     = plugin_diskhealth_get_template_content();
+    $translation = new NotificationTemplateTranslation();
+    foreach ($iterator as $row) {
+        // Installs from a Windows git checkout have CRLF line endings
+        if (str_replace("\r", '', (string) $row['content_text']) === $text_110) {
+            $translation->update(PluginDiskhealthAlert::prepareInputForGlpi([
+                'id'           => $row['id'],
+                'content_text' => $content['text'],
+                'content_html' => $content['html'],
+            ]));
+        }
+    }
 }
 
 /**
@@ -129,33 +224,14 @@ function plugin_diskhealth_install_notification(): void
         return;
     }
 
-    $text = <<<TEXT
-##diskhealth.action## - ##diskhealth.entity##
-
-##FOREACHdisks##
-##disk.status##: ##disk.computer## - ##disk.model## (##lang.disk.serial##: ##disk.serial##)
-##lang.disk.health##: ##disk.health##. ##disk.problems##
-##disk.computerurl##
-
-##ENDFOREACHdisks##
-##lang.diskhealth.url##: ##diskhealth.url##
-TEXT;
-
-    $html = <<<HTML
-<p><strong>##diskhealth.action## - ##diskhealth.entity##</strong></p>
-<p>##FOREACHdisks##</p>
-<p><strong>##disk.status##</strong>: <a href="##disk.computerurl##">##disk.computer##</a> - ##disk.model## (##lang.disk.serial##: ##disk.serial##)<br />##lang.disk.health##: ##disk.health##. ##disk.problems##</p>
-<p>##ENDFOREACHdisks##</p>
-<p><a href="##diskhealth.url##">##lang.diskhealth.url##</a></p>
-HTML;
-
+    $content     = plugin_diskhealth_get_template_content();
     $translation = new NotificationTemplateTranslation();
     $translation->add(PluginDiskhealthAlert::prepareInputForGlpi([
         'notificationtemplates_id' => $templates_id,
         'language'                 => '',
         'subject'                  => '##diskhealth.action## (##diskhealth.count##) - ##diskhealth.entity##',
-        'content_text'             => $text,
-        'content_html'             => $html,
+        'content_text'             => $content['text'],
+        'content_html'             => $content['html'],
     ]));
 
     $notification     = new Notification();
