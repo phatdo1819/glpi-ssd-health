@@ -11,7 +11,7 @@ See how much life each SSD has left, like CrystalDiskInfo's Health %, for every 
 | [`screenshots/`](screenshots/) | What the plugin looks like in GLPI 11 and 10 | Nothing |
 
 - **Ready-to-use packages** (plugin archives and zipped folders) are on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest).
-- **The custom agent installer (option B)** is built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`: GLPI Agent 1.20 plus this change.
+- **The custom agent installer (option B)**, `GLPI-Agent-1.20-smarthealth-x64.msi`, is on the same page. It's GLPI Agent 1.20 plus this change, built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`.
 
 How the pieces fit together:
 
@@ -46,6 +46,7 @@ Everything below ran on a Windows 11 test VM:
 - **Agent module:** 36 unit tests pass on both agent 1.20 and the development branch. The existing inventory tests still pass.
 - **Real agent run:** stock GLPI Agent 1.20 with the module ran a real inventory here and sent it to both test servers. This VM has a VMware virtual NVMe disk, which the plugin flags as a virtual disk.
 - **Missing module:** the inventory still works when one of the storage modules the health module waits for is missing, as could happen in a future agent release.
+- **Custom agent installer (option B):** GitHub Actions ran the agent's tests and built the installers for Windows, Linux and macOS without errors. The Windows MSI contains the module, smartctl 7.5 and drivedb.h, and has the official upgrade code. The agent from the unpacked MSI reported the same SMART data as option A.
 - **GLPI 10.0.28 and 11.0.11** (PHP 8.3, MariaDB 11.4):
   - plugin install and uninstall
   - data from the real agent, plus seven simulated drives covering every status
@@ -60,7 +61,7 @@ What was **not** tested:
 - Linux agents.
 - Several entities and user profiles.
 - A large number of PCs.
-- Building the custom agent installer (option B). It's built by GitHub Actions on a fork of the agent project, which needs your GitHub account.
+- Installing the custom agent installer on a PC. It was only unpacked here.
 
 ## Upkeep
 
@@ -102,6 +103,6 @@ Checked on 2026-10-04 against the license files shipped with each product.
 Both public repositories count as distribution, and meet those conditions:
 
 - **This repository** contains the source code, every license text, and the smartmontools source in `third-party/`. The Releases page also offers that source archive.
-- **The agent fork [`phatdo1819/glpi-agent`](https://github.com/phatdo1819/glpi-agent)** contains the source code, and the smartmontools source and license next to smartctl.exe in `contrib/windows/packaging/tools/`. Each of its five changed agent files carries a "Modified 2026-10-04" notice, as GPLv2 §2(a) requires.
+- **The agent fork [`phatdo1819/glpi-agent`](https://github.com/phatdo1819/glpi-agent)** contains the source code, and the smartmontools source and license next to smartctl.exe in `contrib/windows/packaging/tools/`. Each of its five changed agent files carries a "Modified 2026-10-04" notice, as GPLv2 §2(a) requires. It's also the source code of the custom agent installer on the Releases page, so keep the fork for as long as the installer is published.
 
 The GPL covers copyright, not trademarks. Using the GLPI name internally is fine, but don't present your custom build to others as the official GLPI Agent.

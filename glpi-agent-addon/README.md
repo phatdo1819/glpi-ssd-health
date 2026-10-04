@@ -61,26 +61,27 @@ In the JSON output, your SSDs should now have fields such as `"smart_health": 93
 
 ## Option B: your own agent installer
 
-The custom build lives in your public fork: <https://github.com/phatdo1819/glpi-agent>, branch **`smart-health`**. That branch is GLPI Agent 1.20 plus this change, which:
+**The installer for 1.20 is ready:** `GLPI-Agent-1.20-smarthealth-x64.msi` on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest). On the test VM, the agent from the unpacked MSI reported the same SMART data as option A. It hasn't been installed on a PC yet.
+
+It's built from your public fork: <https://github.com/phatdo1819/glpi-agent>, branch **`smart-health`**. That branch is GLPI Agent 1.20 plus this change, which:
 
 - adds the module and its tests;
 - registers the new fields in the agent;
 - bundles smartctl in the MSI, with its license and source code.
 
-Every push to that branch builds the installers with GitHub Actions.
-
-To get a build:
+Every push to that branch builds the installers again with GitHub Actions. To get a new build:
 
 1. Open **Actions > GLPI Agent Packaging** on the fork and pick the run.
 2. Download the **Windows-Build-x64** artifact. It contains the MSI.
 
-GitHub deletes artifacts after 90 days, so keep your own copy of each MSI you deploy.
+GitHub deletes artifacts after 90 days, so keep your own copy of each MSI you deploy, for example on a release here.
 
 About the MSI:
 
-- It's unsigned. That's fine for Group Policy software installation, but Windows SmartScreen warns if you run it by hand.
-- It reports its version as `1.20-git<commit>`.
+- It's unsigned, unlike the official MSI, which Teclib signs. That's fine for Group Policy software installation, but Windows SmartScreen warns if you run it by hand. If your PCs block unsigned installers, allow this file by its hash or sign it with your own code-signing certificate.
+- Programs and Features lists it as **GLPI Agent 1.20 (git07921671)**, and the agent reports its version as `1.20-git07921671`.
 - It replaces any installed GLPI Agent, official or custom, the same way the official MSI does.
+- It keeps the installed agent's settings, such as the server and tag, unless you pass new ones or `CONFIG=reset`. That's the official installer's behavior, unchanged.
 - It takes the same install options as the official MSI, for example `SERVER=...`.
 
 ## When GLPI Agent is upgraded
