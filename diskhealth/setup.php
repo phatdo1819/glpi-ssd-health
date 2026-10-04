@@ -9,7 +9,7 @@
  * @license   MIT
  */
 
-define('PLUGIN_DISKHEALTH_VERSION', '1.0.0');
+define('PLUGIN_DISKHEALTH_VERSION', '1.1.0');
 define('PLUGIN_DISKHEALTH_MIN_GLPI', '10.0.0');
 define('PLUGIN_DISKHEALTH_MAX_GLPI', '11.0.99');
 
@@ -37,7 +37,10 @@ function plugin_init_diskhealth()
 
     $PLUGIN_HOOKS['csrf_compliant']['diskhealth'] = true;
 
-    Plugin::registerClass(PluginDiskhealthDisk::class, ['addtabon' => ['Computer']]);
+    Plugin::registerClass(PluginDiskhealthDisk::class, [
+        'addtabon'                    => ['Computer'],
+        'notificationtemplates_types' => true,
+    ]);
 
     // Inventory adds or updates every hard drive with all the fields sent by the
     // agent, including the SMART_* ones; pre_item_update runs even when nothing
@@ -52,6 +55,12 @@ function plugin_init_diskhealth()
         'Item_DeviceHardDrive' => [PluginDiskhealthDisk::class, 'cleanForItemDevice'],
         'Computer'             => [PluginDiskhealthDisk::class, 'cleanForItem'],
     ];
+
+    // Tell admins about drives to replace: home page, computer page and dashboard cards.
+    // Email alerts and tickets come from the diskhealthalert automatic action.
+    $PLUGIN_HOOKS['display_central']['diskhealth'] = [PluginDiskhealthAlert::class, 'showCentralWarning'];
+    $PLUGIN_HOOKS['pre_show_item']['diskhealth']   = [PluginDiskhealthAlert::class, 'showItemWarning'];
+    $PLUGIN_HOOKS['dashboard_cards']['diskhealth'] = [PluginDiskhealthAlert::class, 'getDashboardCards'];
 
     // Menu entry is only displayed to users who can view computers (see canView())
     $PLUGIN_HOOKS['menu_toadd']['diskhealth'] = ['assets' => PluginDiskhealthDisk::class];

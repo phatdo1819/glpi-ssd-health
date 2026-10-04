@@ -6,7 +6,7 @@ See how much life each SSD has left, like CrystalDiskInfo's Health %, for every 
 |---|---|---|
 | [`ssd-health/`](ssd-health/) | Standalone script that writes a CSV report through Group Policy. It works without GLPI. | PCs, through a GPO scheduled task |
 | [`glpi-agent-addon/`](glpi-agent-addon/) | GLPI Agent module plus smartctl, to add to your existing agents (option A) | Each PC, by copying 3 files through Group Policy |
-| [`diskhealth/`](diskhealth/) | GLPI plugin | GLPI server, under `glpi/plugins/` |
+| [`diskhealth/`](diskhealth/) | GLPI plugin: each drive's health, a fleet list, and alerts for admins | GLPI server, under `glpi/plugins/` |
 | [`glpi-agent-smarthealth.patch`](glpi-agent-smarthealth.patch) | The agent change as a patch, for rebuilding the custom agent when a new agent version comes out | Nothing |
 | [`screenshots/`](screenshots/) | What the plugin looks like in GLPI 11 and 10 | Nothing |
 
@@ -19,6 +19,11 @@ How the pieces fit together:
 2. It adds `smart_*` fields to each disk in the inventory.
 3. GLPI accepts these extra fields as they are; nothing in GLPI itself needs changing.
 4. The plugin saves the fields and shows each drive's health on the computer page and in the fleet list.
+5. It tells admins about drives to replace in four ways:
+   - warnings on the home page and on the computer's page
+   - a daily email
+   - dashboard cards
+   - optionally, a ticket per drive
 
 ## Test plan
 
@@ -35,7 +40,13 @@ How the pieces fit together:
    3. Open CrystalDiskInfo on the same PC and compare its Health % with `smart_health`.
    4. Send an inventory now: open <http://127.0.0.1:62354/now> on that PC, or run `"C:\Program Files\GLPI-Agent\glpi-agent.bat" --force`.
 3. **GLPI.** Open the PC and check its **Disk health** tab. Then check **Assets > Disk health**.
-4. **Report back** for each drive: the model, CrystalDiskInfo's %, GLPI's %, and any drive showing **Unknown** or **No SMART data**.
+4. **Alerts.** Healthy drives trigger no alerts, so to see them, set "Replace soon" to 100 in **Setup > Plugins > Disk health**. Every SSD that reports its wear then counts as "replace soon". Then check:
+   1. **Warnings:** the home page and the PC's page show a warning.
+   2. **Email:** turn on email notifications in GLPI (see [`diskhealth/README.md`](diskhealth/README.md#email-alerts)), then run **Setup > Automatic actions > diskhealthalert > Execute**. The administrator address gets the email.
+   3. **Tickets**, if you want them: set them to "When it needs replacing soon or now", then run the action again.
+
+   Set "Replace soon" back to 30 afterwards.
+5. **Report back** for each drive: the model, CrystalDiskInfo's %, GLPI's %, and any drive showing **Unknown** or **No SMART data**.
 
 After that, roll out the agent files with the Group Policy steps in [`glpi-agent-addon/README.md`](glpi-agent-addon/README.md).
 
@@ -54,6 +65,14 @@ Everything below ran on a Windows 11 test VM:
   - the daily cleanup task
   - the computer tab and the fleet list, including sorting, filters and CSV export
   - the settings page
+  - upgrading the plugin from 1.0.0 to 1.1.0, keeping its data
+- **Alerts (1.1.0)**, on both GLPI versions:
+  - the home page and computer warnings, and turning them off
+  - both dashboard cards
+  - email alerts: first alert, no repeat, reminders, a drive getting worse, and a drive back to OK then failing again
+  - tickets, one per drive, with category, group and linked computer
+  - uninstall removing the email notification, its template and the dashboard cards
+  - emails were checked in GLPI's outgoing queue; no mail server was used
 
 What was **not** tested:
 
@@ -62,6 +81,7 @@ What was **not** tested:
 - Several entities and user profiles.
 - A large number of PCs.
 - Installing the custom agent installer on a PC. It was only unpacked here.
+- Sending the alert emails through a real mail server.
 
 ## Upkeep
 

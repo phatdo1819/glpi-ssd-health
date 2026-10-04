@@ -285,7 +285,15 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
         if ($name === 'diskhealthcleanup') {
             return ['description' => __('Remove disk health data of deleted hard drives', 'diskhealth')];
         }
+        if ($name === 'diskhealthalert') {
+            return ['description' => __('Email the drives that need replacing, and create tickets for them', 'diskhealth')];
+        }
         return [];
+    }
+
+    public static function cronDiskhealthalert(CronTask $task): int
+    {
+        return PluginDiskhealthAlert::cronAlert($task);
     }
 
     /**
@@ -439,7 +447,12 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
 
             echo '<td>' . htmlspecialchars((string) $row['drive_type']) . '</td>';
             echo '<td>' . self::getHealthBar($row['health'] === null ? null : (int) $row['health'], (string) $row['health_source']) . '</td>';
-            echo $nowrap . self::getStatusBadge((int) $row['status']) . '</td>';
+            echo $nowrap . self::getStatusBadge((int) $row['status']);
+            if ((int) $row['tickets_id'] > 0) {
+                echo '<br><a href="' . htmlspecialchars(Ticket::getFormURLWithID((int) $row['tickets_id'])) . '">'
+                    . htmlspecialchars(sprintf('%s %d', Ticket::getTypeName(1), $row['tickets_id'])) . '</a>';
+            }
+            echo '</td>';
             echo '<td>' . htmlspecialchars((string) $row['problems']) . '</td>';
             echo $nowrap . ($row['power_on_hours'] === null ? '' : htmlspecialchars(number_format((int) $row['power_on_hours'], 0, '.', ' '))) . '</td>';
             echo $nowrap . ($row['written_tb'] === null ? '' : htmlspecialchars(sprintf(__('%s TB', 'diskhealth'), $row['written_tb']))) . '</td>';
@@ -668,6 +681,15 @@ class PluginDiskhealthDisk extends PluginDiskhealthDiskBase
             'field'         => 'media_errors',
             'name'          => __('Media errors', 'diskhealth'),
             'datatype'      => 'number',
+            'massiveaction' => false,
+        ];
+
+        $tab[] = [
+            'id'            => '19',
+            'table'         => 'glpi_tickets',
+            'field'         => 'name',
+            'name'          => Ticket::getTypeName(1),
+            'datatype'      => 'itemlink',
             'massiveaction' => false,
         ];
 
