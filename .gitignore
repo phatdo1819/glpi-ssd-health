@@ -1,0 +1,7 @@
+# Agent source lives in its own repository: https://github.com/phatdo1819/glpi-agent (branch smart-health)
+/glpi-agent/
+
+# Packages are attached to GitHub releases instead
+/*.tar.gz
+/*.zip
+/*.msi

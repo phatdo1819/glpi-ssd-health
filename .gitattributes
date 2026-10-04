@@ -1,0 +1,6 @@
+# Keep these byte-for-byte on every system: git apply needs the exact patch,
+# and drivedb.h must match the checksum of the official smartmontools file
+*.patch     -text
+drivedb.h   -text
+*.exe       binary
+*.png       binary
