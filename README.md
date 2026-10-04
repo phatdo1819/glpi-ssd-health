@@ -71,7 +71,16 @@ What was **not** tested:
 | GLPI moves to a newer branch (11.1, 12…) | Test the plugin, then raise `PLUGIN_DISKHEALTH_MAX_GLPI` in `diskhealth/setup.php` |
 | The module changes | Replace `SmartHealth.pm` on the share |
 
-## Licenses
+## License
+
+This repository is licensed **GPL-3.0-or-later** (see [`LICENSE`](LICENSE)), except:
+
+- `glpi-agent-addon/SmartHealth.pm` and `glpi-agent-smarthealth.patch`: GPL-2.0-or-later, like GLPI Agent. See `glpi-agent-addon/LICENSE-glpi-agent.txt`.
+- `smartctl.exe` and `drivedb.h`: smartmontools 7.5, GPL-2.0-or-later, included unmodified. Their license text sits next to each copy, and their source code is in [`third-party/`](third-party/).
+
+You're welcome to use, change and share all of it under those licenses.
+
+## Using it in your organization
 
 Checked on 2026-10-04 against the license files shipped with each product.
 
@@ -80,20 +89,19 @@ Checked on 2026-10-04 against the license files shipped with each product.
 | GLPI 10 and 11 | GPL-3.0-or-later. This is the standard GPL, not the AGPL, so running it as an internal web application creates no obligations. |
 | GLPI Agent, the module, the patch | GPL-2.0-or-later |
 | smartmontools (smartctl, drivedb.h) | GPL-2.0-or-later. The Windows binary uses only Windows system DLLs; its compiler runtime is permissively licensed. |
-| Disk health plugin | GPL-3.0-or-later |
+| Disk health plugin, report scripts | GPL-3.0-or-later |
 
-**Inside the company: free to use, change and install on any number of PCs, no fees and no obligations.**
+**Inside an organization: free to use, change and install on any number of PCs, no fees and no obligations.**
 
 - GPLv3 §2: "You may make, run and propagate covered works that you do not convey, without conditions".
 - GPLv2 §0: "The act of running the Program is not restricted".
 - FSF GPL FAQ (#InternalDistribution): copies made and installed within one organization are not "distribution".
 
-**Obligations start only when you give copies outside the company**, including to contractors working off-site and to clients. You must then provide the source code and the license texts.
+**Obligations start only when you give copies outside your organization**, including to contractors working off-site and to clients. You must then provide the source code and the license texts.
 
-**The public fork `phatdo1819/glpi-agent` counts as distribution.** Its obligations are met:
+Both public repositories count as distribution, and meet those conditions:
 
-- The repository is the source code.
-- The smartmontools source and license sit next to smartctl.exe in `contrib/windows/packaging/tools/`.
-- Each of the five changed agent files carries a "Modified 2026-10-04" notice, as GPLv2 §2(a) requires.
+- **This repository** contains the source code, every license text, and the smartmontools source in `third-party/`. The Releases page also offers that source archive.
+- **The agent fork [`phatdo1819/glpi-agent`](https://github.com/phatdo1819/glpi-agent)** contains the source code, and the smartmontools source and license next to smartctl.exe in `contrib/windows/packaging/tools/`. Each of its five changed agent files carries a "Modified 2026-10-04" notice, as GPLv2 §2(a) requires.
 
 The GPL covers copyright, not trademarks. Using the GLPI name internally is fine, but don't present your custom build to others as the official GLPI Agent.

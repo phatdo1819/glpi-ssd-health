@@ -117,13 +117,13 @@ Put the new `SmartHealth.pm` on the share. The Replace item copies it at the nex
 | Part | License | Included |
 |---|---|---|
 | `SmartHealth.pm`, the patch | GPL-2.0-or-later, like GLPI Agent | `LICENSE-glpi-agent.txt` |
-| smartctl, drivedb.h | GPL-2.0-or-later (smartmontools) | `windows\smartmontools-COPYING.txt`. The installer build (option B) also puts it next to smartctl.exe. |
+| smartctl, drivedb.h | GPL-2.0-or-later (smartmontools) | `windows\smartmontools-COPYING.txt`, and the source code in `third-party/` at the repository root. The installer build (option B) also puts the license next to smartctl.exe. |
 | Disk health GLPI plugin | GPL-3.0-or-later, like GLPI | `diskhealth\LICENSE` |
 
 Using and deploying these inside your organization carries no obligations. If you give the agent or smartctl to another organization, for example as a service provider deploying to client PCs, the GPL requires you to also offer them the source code. That means:
 
 - `SmartHealth.pm` itself, which is already source;
-- smartmontools 7.5 source: `smartmontools-7.5.tar.gz` from <https://github.com/smartmontools/smartmontools/releases/tag/RELEASE_7_5>.
+- smartmontools 7.5 source: `third-party/smartmontools-7.5.tar.gz` in this repository, also on the Releases page.
 
 ## Turning it off
 

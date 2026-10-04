@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 <#
 .SYNOPSIS
     Reports SSD health (% of rated life left, like CrystalDiskInfo) for every disk in this PC.

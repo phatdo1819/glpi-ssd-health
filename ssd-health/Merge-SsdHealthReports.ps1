@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 <#
 .SYNOPSIS
     Combines the per-PC CSVs written by Get-SsdHealth.ps1 into one list, worst disks first.

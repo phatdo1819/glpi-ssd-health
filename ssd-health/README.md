@@ -98,4 +98,4 @@ Other useful columns:
 - Disks behind a hardware RAID controller, and some USB enclosures, may show `ERROR` or not appear.
 - A PC that is off or away from the network writes its report the next time it can reach the share. A PC that never ran the task won't appear at all; compare the list with Active Directory.
 - If your Group Policy forces the PowerShell execution policy to `AllSigned`, `-ExecutionPolicy Bypass` is ignored and you need to sign the script.
-- smartmontools is licensed GPL-2.0-or-later (full text in `bin\smartmontools-COPYING.txt`). Running it inside your company has no obligations.
+- The scripts in this folder are licensed GPL-3.0-or-later; see `LICENSE` at the repository root. smartctl and drivedb.h come from smartmontools, licensed GPL-2.0-or-later: the license text is in `bin\smartmontools-COPYING.txt`, and the source code is in `third-party/` at the repository root. Running all of this inside your company carries no obligations.
