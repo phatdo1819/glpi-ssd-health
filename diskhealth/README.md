@@ -58,7 +58,7 @@ When GLPI removes a drive or a computer, its row is removed too. A daily task, *
 
 ## License
 
-GPL-3.0-or-later, the same as GLPI (see `LICENSE`).
+MIT (see `LICENSE`). MIT is compatible with GLPI's GPL-3.0-or-later license.
 
 ## Uninstall
 

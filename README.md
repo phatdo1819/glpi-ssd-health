@@ -73,12 +73,12 @@ What was **not** tested:
 
 ## License
 
-This repository is licensed **GPL-3.0-or-later** (see [`LICENSE`](LICENSE)), except:
+This repository is licensed **MIT** (see [`LICENSE`](LICENSE)), except:
 
 - `glpi-agent-addon/SmartHealth.pm` and `glpi-agent-smarthealth.patch`: GPL-2.0-or-later, like GLPI Agent. See `glpi-agent-addon/LICENSE-glpi-agent.txt`.
 - `smartctl.exe` and `drivedb.h`: smartmontools 7.5, GPL-2.0-or-later, included unmodified. Their license text sits next to each copy, and their source code is in [`third-party/`](third-party/).
 
-You're welcome to use, change and share all of it under those licenses.
+You're welcome to use, change and share all of it under those licenses. smartctl is a separate program that the scripts and the agent run, so shipping it next to MIT code is allowed: the GPL calls this "mere aggregation". It only requires smartctl's own license and source to travel with it.
 
 ## Using it in your organization
 
@@ -89,7 +89,7 @@ Checked on 2026-10-04 against the license files shipped with each product.
 | GLPI 10 and 11 | GPL-3.0-or-later. This is the standard GPL, not the AGPL, so running it as an internal web application creates no obligations. |
 | GLPI Agent, the module, the patch | GPL-2.0-or-later |
 | smartmontools (smartctl, drivedb.h) | GPL-2.0-or-later. The Windows binary uses only Windows system DLLs; its compiler runtime is permissively licensed. |
-| Disk health plugin, report scripts | GPL-3.0-or-later |
+| Disk health plugin, report scripts | MIT |
 
 **Inside an organization: free to use, change and install on any number of PCs, no fees and no obligations.**
 

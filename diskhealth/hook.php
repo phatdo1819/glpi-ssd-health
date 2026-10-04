@@ -3,7 +3,7 @@
 /**
  * Disk health plugin for GLPI
  *
- * @license   GPLv3+ https://www.gnu.org/licenses/gpl-3.0.html
+ * @license   MIT
  */
 
 function plugin_diskhealth_install()

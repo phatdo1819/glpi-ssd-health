@@ -6,7 +6,7 @@
  * Stores the SMART data that GLPI Agent reports for each hard drive (SSD remaining
  * life, SMART status, error counters) and shows which drives need replacing.
  *
- * @license   GPLv3+ https://www.gnu.org/licenses/gpl-3.0.html
+ * @license   MIT
  */
 
 define('PLUGIN_DISKHEALTH_VERSION', '1.0.0');
@@ -19,7 +19,7 @@ function plugin_version_diskhealth()
         'name'         => 'Disk health',
         'version'      => PLUGIN_DISKHEALTH_VERSION,
         'author'       => '',
-        'license'      => 'GPLv3+',
+        'license'      => 'MIT',
         'homepage'     => '',
         'requirements' => [
             'glpi' => [

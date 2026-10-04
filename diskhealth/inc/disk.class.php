@@ -3,7 +3,7 @@
 /**
  * Disk health plugin for GLPI
  *
- * @license   GPLv3+ https://www.gnu.org/licenses/gpl-3.0.html
+ * @license   MIT
  */
 
 // GLPI 11 only uses getDefaultSearchRequest() from classes implementing this interface,
