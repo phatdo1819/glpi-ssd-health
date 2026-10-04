@@ -8,3 +8,6 @@ drivedb.h   -text
 # Linux runs these: keep LF line endings even when checked out on Windows
 *.sh        text eol=lf
 *.pm        text eol=lf
+
+# Windows runs these: CRLF in archives, whatever the git settings
+*.ps1       text eol=crlf
