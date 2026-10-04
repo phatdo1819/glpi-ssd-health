@@ -11,7 +11,7 @@ See how much life each SSD has left, like CrystalDiskInfo's Health %, for every 
 | [`screenshots/`](screenshots/) | What the plugin looks like in GLPI 11 and 10 | Nothing |
 
 - **Ready-to-use packages** (plugin archives and zipped folders) are on the [Releases page](https://github.com/phatdo1819/glpi-ssd-health/releases/latest).
-- **The custom agent installer (option B)**, `GLPI-Agent-1.20-smarthealth-x64.msi`, is on the same page. It's GLPI Agent 1.20 plus this change, built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`.
+- **The custom agent installer (option B)**, `GLPI-Agent-1.20-smarthealth-x64.msi`, is on the same page. It's GLPI Agent 1.20 plus this change, built from the fork [phatdo1819/glpi-agent](https://github.com/phatdo1819/glpi-agent), branch `smart-health`. The fork's [Releases page](https://github.com/phatdo1819/glpi-agent/releases/latest) has the same file.
 
 How the pieces fit together:
 
