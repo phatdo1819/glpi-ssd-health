@@ -5,7 +5,7 @@ See how much life each SSD has left, like CrystalDiskInfo's Health %, for every 
 | Folder / file | What it is | Goes on |
 |---|---|---|
 | [`ssd-health/`](ssd-health/) | Standalone script that writes a CSV report through Group Policy. It works without GLPI. | PCs, through a GPO scheduled task |
-| [`glpi-agent-addon/`](glpi-agent-addon/) | GLPI Agent module plus smartctl, to add to your existing agents (option A) | Windows PCs: 3 files copied through Group Policy. Linux PCs: its install script. |
+| [`glpi-agent-addon/`](glpi-agent-addon/) | GLPI Agent module plus smartctl, to add to your existing agents (option A) | Windows PCs: 3 files copied through Group Policy, or its install script. Linux PCs: its install script. |
 | [`diskhealth/`](diskhealth/) | GLPI plugin: each drive's health, a fleet list, and alerts for admins | GLPI server, under `glpi/plugins/` |
 | [`glpi-agent-smarthealth.patch`](glpi-agent-smarthealth.patch) | The agent change as a patch, for rebuilding the custom agent when a new agent version comes out | Nothing |
 | [`screenshots/`](screenshots/) | What the plugin looks like in GLPI 11 and 10 | Nothing |
@@ -29,7 +29,7 @@ How the pieces fit together:
 
 1. **GLPI server.** Install the plugin: copy `diskhealth` into `glpi/plugins/`, then **Setup > Plugins > Install > Enable**. Nothing shows yet.
 2. **One or two test PCs with real SSDs**, ideally different brands and including at least one SATA SSD:
-   1. Copy the three files from `glpi-agent-addon` by hand. The paths are in its README.
+   1. Copy the `glpi-agent-addon` folder to the PC and run its install script in an Administrator command prompt: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Install-SmartHealth.ps1`. Or copy the three files by hand; the paths are in its README.
    2. In an Administrator command prompt, run:
 
       ```bat
@@ -59,7 +59,13 @@ Everything below ran on a Windows 11 test VM and a Debian 13 test VM (arm64):
 
 - **Agent module:** 52 unit tests pass on agent 1.20 and the development branch, with Windows' and Debian's Perl. The existing inventory tests still pass.
 - **Real agent runs:** stock GLPI Agent 1.20 with the module ran a real inventory on both VMs and sent it to both test servers. Both VMs have a VMware virtual NVMe disk, which the plugin flags as a virtual disk. The volumes came out as `C:, E: (New Volume)` on Windows and `/boot/efi, /` on Debian.
-- **Linux install script:** on Debian, it installed smartmontools 7.4 and the module, and its check found the SMART data. Reinstalling the agent package leaves the module in place.
+- **Linux install script:** on Debian, it installed smartmontools 7.4 and the module, and its check found the SMART data. Reinstalling the agent package, or changing its version from 1.20 to 1.19 and back, leaves the module in place.
+- **Windows install script**, with the official signed agent:
+  - It added the files to 1.19, and a rerun changed nothing.
+  - Upgrading the agent to 1.20 kept the files, and SMART data kept working.
+  - It recognized the custom installer and left it alone.
+  - It added SSD health back after a switch from the custom installer to the official one.
+  - `-Uninstall` removed the files, including those left after the agent itself was uninstalled.
 - **Missing module:** the inventory still works when one of the storage modules the health module waits for is missing, as could happen in a future agent release.
 - **Custom agent installer (option B):** GitHub Actions ran the agent's tests and built the installers for Windows, Linux and macOS without errors. The Windows MSI contains the module, smartctl 7.5 and drivedb.h, and has the official upgrade code. The agent from the unpacked MSI reported the same SMART data and volumes as option A.
 - **GLPI 10.0.28 and 11.0.11** (PHP 8.3, MariaDB 11.4):

@@ -5,6 +5,7 @@ This module makes GLPI Agent report SSD health with every inventory, the same id
 | File | What it is |
 |---|---|
 | `SmartHealth.pm` | The agent module. Works on Windows, Linux and macOS; volumes are reported on Windows and Linux. |
+| `windows\Install-SmartHealth.ps1` | Windows install script: adds the module and smartctl to the installed agent |
 | `linux/install-smarthealth.sh` | Linux install script: adds the module and installs smartmontools if needed |
 | `windows\smartctl.exe`, `windows\drivedb.h` | smartmontools 7.5, 64-bit, and its drive database. Checksums match the official release. |
 | `LICENSE-glpi-agent.txt` | License of the module: GPL-2.0-or-later, the same as GLPI Agent |
@@ -15,9 +16,15 @@ There are two ways to deploy it: add it to your existing agents (option A, quick
 
 ## Option A: add to your existing agents (no rebuild)
 
-Tested with GLPI Agent 1.20, the current release. No agent setting changes are needed. The module is picked up at the next inventory, without restarting the service.
+Tested with GLPI Agent 1.19 and 1.20, the current release, including an upgrade from 1.19 to 1.20 with the files in place. No agent setting changes are needed. The module is picked up at the next inventory, without restarting the service.
+
+The result is the same as the custom installer (option B): the same module and smartctl. The agent itself stays the official one, signed by Teclib, so a new agent release needs no rebuild.
 
 ### Windows
+
+There are two ways to add the files: Group Policy file copies, or the install script. Both give the same result.
+
+#### With Group Policy file copies
 
 Copy three files into the agent folder (default `C:\Program Files\GLPI-Agent`):
 
@@ -34,8 +41,31 @@ With Group Policy:
 3. Create one **New > File** item per row of the table above:
    - **Source file:** the share path
    - **Destination file:** the full path from the table
-   - **Action:** **Replace** for `SmartHealth.pm`. Replace overwrites the file at every policy refresh, so a new version of the module put on the share reaches every PC. The file is only 13 KB.
+   - **Action:** **Replace** for `SmartHealth.pm`. Replace overwrites the file at every policy refresh, so a new version of the module put on the share reaches every PC. The file is under 20 KB.
    - **Action:** **Update** for `smartctl.exe` and `drivedb.h`. Update copies a file only when it's missing and never overwrites an existing one, which avoids re-sending 1.4 MB every 90 minutes. To roll out a new smartctl later, switch these two items to Replace for a day.
+
+#### With the install script
+
+`windows\Install-SmartHealth.ps1` copies the same files, plus the smartmontools license, into the agent folder, wherever the agent is installed. Keep it in this folder: it takes `SmartHealth.pm` from the folder above. In an **Administrator** command prompt:
+
+```bat
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows\Install-SmartHealth.ps1
+```
+
+- It ends with a quick check that shows the SMART data and volumes found on each disk.
+- You can run it again at any time: files already up to date are left alone.
+- `-Uninstall` removes the files. If the agent itself was uninstalled first, `-Uninstall` removes the files left behind.
+- On a PC with the custom installer (option B), it does nothing, as that installer already includes the files.
+
+To run it on every PC at startup through Group Policy, instead of the file copies:
+
+1. Put this folder on a share that **Domain Computers** can read.
+2. In a GPO linked to your computers' OU, go to **Computer Configuration > Policies > Windows Settings > Scripts (Startup/Shutdown) > Startup**. Use the **Scripts** tab rather than the PowerShell Scripts tab, so the execution policy doesn't block the unsigned script.
+3. Add:
+   - **Script name:** `powershell.exe`
+   - **Script parameters:** `-NoProfile -ExecutionPolicy Bypass -File \\fileserver\SsdHealth$\glpi-agent-addon\windows\Install-SmartHealth.ps1 -SkipCheck -LogPath C:\Windows\Temp\SmartHealth.log`
+
+The script then runs as SYSTEM at each startup and only copies what changed. Other deployment tools, such as Intune or PDQ Deploy, can run the same command.
 
 ### Linux
 
@@ -109,8 +139,9 @@ On Linux, use option A. The fork also builds Linux packages, but they carry a di
 
 **Option A: nothing to redo.**
 
-- The agent installer keeps these files during an upgrade. It only removes the files it installed itself. If a reinstall does remove them, Group Policy copies them back.
-- On Linux, a package upgrade also leaves the module in place, as the package doesn't own that file. If the agent is ever removed and reinstalled, run the install script again.
+- The agent installer keeps these files during an upgrade. It only removes the files it installed itself. Tested on Windows from 1.19 to 1.20: all four files stayed unchanged and SMART data kept working.
+- On Linux, package upgrades leave the module in place, as no package owns that file. Tested on Debian from 1.20 to 1.19 and back to 1.20.
+- Moving a PC from the custom installer (option B) to the official one removes SSD health, as those files belonged to the custom installer. The Group Policy file copies or the startup script add them back at the next refresh or startup, or run the install script once.
 - The module only uses long-standing parts of the agent: the list of disks, running a command, and reading JSON.
 - It only waits for the storage modules that actually exist in the installed agent. A future release that renames or removes one of them therefore can't block the inventory.
 - The agent runs each module separately. If a future version ever breaks this one, inventories carry on, just without SMART data.
@@ -133,7 +164,8 @@ The push starts the build. Download the MSI from the Actions run as above.
 
 ## When this module is updated
 
-- **Windows:** put the new `SmartHealth.pm` on the share. The Replace item copies it at the next policy refresh, and the agent uses it at its next inventory. No restart is needed.
+- **Windows with Group Policy file copies:** put the new `SmartHealth.pm` on the share. The Replace item copies it at the next policy refresh, and the agent uses it at its next inventory. No restart is needed.
+- **Windows with the install script:** put the new add-on folder on the share, or run the script from it. It copies only what changed.
 - **Linux:** run the install script from the new folder.
 
 ## Licenses
@@ -142,7 +174,7 @@ The push starts the build. Download the MSI from the Actions run as above.
 |---|---|---|
 | `SmartHealth.pm`, the patch | GPL-2.0-or-later, like GLPI Agent | `LICENSE-glpi-agent.txt` |
 | smartctl, drivedb.h | GPL-2.0-or-later (smartmontools) | `windows\smartmontools-COPYING.txt`, and the source code in `third-party/` at the repository root. The installer build (option B) also puts the license next to smartctl.exe. |
-| `linux/install-smarthealth.sh` | MIT | `LICENSE` at the repository root |
+| `windows\Install-SmartHealth.ps1`, `linux/install-smarthealth.sh` | MIT | `LICENSE` at the repository root |
 | Disk health GLPI plugin | MIT | `diskhealth\LICENSE` |
 
 Using and deploying these inside your organization carries no obligations. If you give the agent or smartctl to another organization, for example as a service provider deploying to client PCs, the GPL requires you to also offer them the source code. That means:
