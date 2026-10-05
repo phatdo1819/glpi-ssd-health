@@ -55,11 +55,13 @@ After that, roll out the agent files with the Group Policy steps in [`glpi-agent
 
 You tested the first version on two real PCs: the health % nearly matched CrystalDiskInfo's.
 
+You also ran the Linux install script (add-on 1.1.2) on a physical Ubuntu 26.04 PC with an NVMe SSD: it downloaded the module and the PC reported its SMART data.
+
 Everything below ran on a Windows 11 test VM and a Debian 13 test VM (arm64):
 
 - **Agent module:** 52 unit tests pass on agent 1.20 and the development branch, with Windows' and Debian's Perl. The existing inventory tests still pass.
 - **Real agent runs:** stock GLPI Agent 1.20 with the module ran a real inventory on both VMs and sent it to both test servers. Both VMs have a VMware virtual NVMe disk, which the plugin flags as a virtual disk. The volumes came out as `C:, E: (New Volume)` on Windows and `/boot/efi, /` on Debian.
-- **Linux install script:** on Debian, it installed smartmontools 7.4 and the module, and its check found the SMART data. Reinstalling the agent package, or changing its version from 1.20 to 1.19 and back, leaves the module in place.
+- **Linux install script:** on Debian, it installed smartmontools 7.4 and the module, and its check found the SMART data. The 1.1.2 script's download, offline fallback, refusal of a web page saved as the module, and repair of a broken install were tested without root on the Debian VM. Reinstalling the agent package, or changing its version from 1.20 to 1.19 and back, leaves the module in place.
 - **Windows install script**, with the official signed agent:
   - It added the files to 1.19, and a rerun changed nothing.
   - Upgrading the agent to 1.20 kept the files, and SMART data kept working.
@@ -87,7 +89,7 @@ Everything below ran on a Windows 11 test VM and a Debian 13 test VM (arm64):
 
 What was **not** tested:
 
-- Linux PCs with physical disks, and distributions other than Debian. The install script also supports dnf, yum and zypper.
+- Linux distributions other than Debian and Ubuntu. The install script also supports dnf, yum and zypper.
 - GLPI 11.0.11 answers the Debian VM's inventory with an error about its processors, because this arm64 VM reports them without a model. The disks are saved anyway. Linux PCs with Intel or AMD processors report a model, so they shouldn't hit this, but that wasn't tested.
 - Several entities and user profiles.
 - A large number of PCs.
