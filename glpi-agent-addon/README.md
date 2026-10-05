@@ -82,7 +82,7 @@ The script:
 1. finds GLPI Agent, installed from its `.deb` or `.rpm` packages or its Linux installer;
 2. downloads `SmartHealth.pm` from this repository with curl or wget, and checks that it is the module and compiles. Without internet access, it uses the `SmartHealth.pm` of this folder instead;
 3. installs smartmontools with apt, dnf, yum or zypper if `smartctl` is missing, and checks it's version 7.0 or later;
-4. copies the module to `/usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/`;
+4. copies the module to `/usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/`, replacing a broken copy, and removes other copies such as `Smarthealth.pm`. A `SmartHealth.pm` saved from a github.com page is the web page, not the module, and the agent can't load it;
 5. runs a quick inventory and lists every disk with its health, SMART status and volumes. When no disk has SMART data, it also shows the devices smartctl finds and what the module logged, to explain why.
 
 Disks are found by smartctl, whatever their names: `/dev/sda` for SATA, `/dev/nvme0` for NVMe (reported in GLPI as `nvme0n1`). Partitions such as `/dev/nvme0n1p2` are shown as volumes of their disk.

@@ -53,6 +53,7 @@ fi
 
 if [ "$action" = uninstall ]; then
     rm -f "$MODULE_DIR/SmartHealth.pm"
+    find "$MODULE_DIR" -maxdepth 1 -type f -iname 'smarthealth*' -exec rm -f {} +
     echo "SSD health module removed. Disks are reported without SMART data from the next inventory."
     exit 0
 fi
@@ -60,12 +61,48 @@ fi
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# A module that isn't the SSD health module, or doesn't compile, would break
-# the agent's whole inventory: never install one
+# What's wrong with a module file, or nothing when it's a working SSD health module.
+# Never install a file with a problem: the agent can't load it.
+module_problem() {
+    if grep -qi '<html\|<!DOCTYPE' "$1"; then
+        echo "it's a web page, not the module. Files saved from a github.com page are web pages: download the module with the page's Raw button instead."
+    elif ! head -n 1 "$1" | grep -q "^package $MODULE_PACKAGE;"; then
+        echo "it isn't the SSD health module"
+    elif command -v perl > /dev/null 2>&1 && ! perl -I"$AGENT_LIB" -c "$1" > /dev/null 2>&1; then
+        echo "Perl can't compile it: $(perl -I"$AGENT_LIB" -c "$1" 2>&1 | head -n 1)"
+    fi
+}
+
 module_ok() {
-    head -n 1 "$1" | grep -q "^package $MODULE_PACKAGE;" || return 1
-    if command -v perl > /dev/null 2>&1; then
-        perl -I"$AGENT_LIB" -c "$1" > /dev/null 2>&1 || return 1
+    [ -z "$(module_problem "$1")" ]
+}
+
+# Other copies of the module in the agent folder, such as Smarthealth.pm or
+# "SmartHealth (1).pm": the agent tries to load every .pm file there
+stray_modules() {
+    find "$MODULE_DIR" -maxdepth 1 -type f -iname 'smarthealth*' ! -name SmartHealth.pm
+}
+
+remove_stray_modules() {
+    stray_modules | while IFS= read -r file; do
+        rm -f "$file"
+        echo "Removed another copy of the module: $file"
+    done
+}
+
+# Says whether the installed module can work
+check_installed_module() {
+    stray_modules | while IFS= read -r file; do
+        echo "Problem: another copy of the module is in the agent folder: $file. Run this script without --check to remove it."
+    done
+    if [ ! -f "$MODULE_DIR/SmartHealth.pm" ]; then
+        echo "Problem: the SSD health module isn't installed. Run this script without --check to install it."
+        return
+    fi
+    problem=$(module_problem "$MODULE_DIR/SmartHealth.pm")
+    if [ -n "$problem" ]; then
+        echo "Problem: the installed $MODULE_DIR/SmartHealth.pm can't work: $problem"
+        echo "Run this script without --check to replace it with the right file."
     fi
 }
 
@@ -98,7 +135,8 @@ local_module() {
 get_module() {
     if [ "$action" = local ]; then
         file=$(local_module) || fail "SmartHealth.pm not found next to this script or in its parent folder"
-        module_ok "$file" || fail "$file isn't a working SSD health module"
+        problem=$(module_problem "$file")
+        [ -z "$problem" ] || fail "$file can't be used: $problem"
         echo "$file"
         return
     fi
@@ -116,6 +154,7 @@ get_module() {
         echo "$local"
         return
     fi
+    [ -f "$file" ] && echo "The downloaded file can't be used: $(module_problem "$file")" >&2
     fail "could not download a working SSD health module from $MODULE_URL. Check the internet access of this PC, or copy the whole glpi-agent-addon folder here and run: sudo sh linux/install-smarthealth.sh --local"
 }
 
@@ -143,6 +182,8 @@ install_smartmontools() {
 
 # Every disk the agent reports, with its SMART data and volumes
 show_check() {
+    check_installed_module
+
     if ! command -v glpi-inventory > /dev/null 2>&1; then
         echo "Check skipped: glpi-inventory not found"
         return
@@ -212,5 +253,6 @@ else
     install -m 0644 "$module" "$MODULE_DIR/SmartHealth.pm"
     echo "SSD health module installed in $MODULE_DIR"
 fi
+remove_stray_modules
 
 show_check
