@@ -39,7 +39,7 @@ How the pieces fit together:
       Check that each SSD now has `smart_health`.
    3. Open CrystalDiskInfo on the same PC and compare its Health % with `smart_health`.
    4. Send an inventory now: open <http://127.0.0.1:62354/now> on that PC, or run `"C:\Program Files\GLPI-Agent\glpi-agent.bat" --force`.
-3. **A Linux PC**, if you have one with an SSD: copy the `glpi-agent-addon` folder to it and run `sudo sh linux/install-smarthealth.sh` from that folder. The script says whether it found SMART data. Then send an inventory with `sudo glpi-agent --force`.
+3. **A Linux PC**, if you have one with an SSD: run `curl -fsSL https://raw.githubusercontent.com/phatdo1819/glpi-ssd-health/main/glpi-agent-addon/linux/install-smarthealth.sh | sudo sh`. The script downloads the module and lists each disk with the SMART data it found. Then send an inventory with `sudo glpi-agent --force`.
 4. **GLPI.** Open each PC and check its **Disk health** tab, including the drive letters or mount points under each drive. Then check **Assets > Disk health**.
 5. **Alerts.** Healthy drives trigger no alerts, so to see them, set "Replace soon" to 100 in **Setup > Plugins > Disk health**. Every SSD that reports its wear then counts as "replace soon". Then check:
    1. **Warnings:** the home page and the PC's page show a warning.
@@ -101,7 +101,7 @@ What was **not** tested:
 | GLPI Agent is upgraded | **Option A:** nothing. The files stay in place, and Group Policy copies them back if they're removed. Check one PC with `glpi-inventory --partial storage,storage_health`. **Option B:** re-apply the patch to the new release and rebuild the MSI. |
 | GLPI is upgraded within 10.0.x or 11.0.x | Nothing |
 | GLPI moves to a newer branch (11.1, 12…) | Test the plugin, then raise `PLUGIN_DISKHEALTH_MAX_GLPI` in `diskhealth/setup.php` |
-| The module changes | **Windows:** replace `SmartHealth.pm` on the share. **Linux:** run the install script from the new folder. |
+| The module changes | **Windows:** replace `SmartHealth.pm` on the share. **Linux:** run the install script again: it downloads the new module. |
 
 ## License
 

@@ -69,26 +69,39 @@ The script then runs as SYSTEM at each startup and only copies what changed. Oth
 
 ### Linux
 
-Copy this folder to the PC and run the install script as root:
+Run the install script as root. It downloads the module itself, so it doesn't need the rest of this folder:
 
 ```sh
-sudo sh linux/install-smarthealth.sh
+curl -fsSL https://raw.githubusercontent.com/phatdo1819/glpi-ssd-health/main/glpi-agent-addon/linux/install-smarthealth.sh | sudo sh
 ```
+
+Or, with this folder copied to the PC: `sudo sh linux/install-smarthealth.sh`.
 
 The script:
 
 1. finds GLPI Agent, installed from its `.deb` or `.rpm` packages or its Linux installer;
-2. installs smartmontools with apt, dnf, yum or zypper if `smartctl` is missing, and checks it's version 7.0 or later;
-3. copies `SmartHealth.pm` to `/usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/`;
-4. runs a quick inventory to check that SMART data is found.
+2. downloads `SmartHealth.pm` from this repository with curl or wget, and checks that it is the module and compiles. Without internet access, it uses the `SmartHealth.pm` of this folder instead;
+3. installs smartmontools with apt, dnf, yum or zypper if `smartctl` is missing, and checks it's version 7.0 or later;
+4. copies the module to `/usr/share/glpi-agent/lib/GLPI/Agent/Task/Inventory/Generic/Storages/`;
+5. runs a quick inventory and lists every disk with its health, SMART status and volumes. When no disk has SMART data, it also shows the devices smartctl finds and what the module logged, to explain why.
 
-Run it again to update the module. `sudo sh linux/install-smarthealth.sh --uninstall` removes the module and leaves smartmontools.
+Disks are found by smartctl, whatever their names: `/dev/sda` for SATA, `/dev/nvme0` for NVMe (reported in GLPI as `nvme0n1`). Partitions such as `/dev/nvme0n1p2` are shown as volumes of their disk.
+
+Run it again to update the module. Options, added after `sh linux/install-smarthealth.sh`, or after `sudo sh -s --` when piped from curl:
+
+| Option | What it does |
+|---|---|
+| `--check` | Only shows the disks and SMART data the agent finds |
+| `--local` | Uses the `SmartHealth.pm` of this folder, without downloading |
+| `--uninstall` | Removes the module and leaves smartmontools |
+
+To download the module from your own server instead of GitHub, set `SMARTHEALTH_URL`, for example `sudo SMARTHEALTH_URL=https://intranet.example/SmartHealth.pm sh install-smarthealth.sh`.
 
 For many PCs, run the script through your usual tool, such as Ansible, or over SSH, for example:
 
 ```sh
 for pc in pc1 pc2 pc3; do
-    scp -r glpi-agent-addon "$pc:/tmp/" && ssh "$pc" 'sudo sh /tmp/glpi-agent-addon/linux/install-smarthealth.sh'
+    ssh "$pc" 'curl -fsSL https://raw.githubusercontent.com/phatdo1819/glpi-ssd-health/main/glpi-agent-addon/linux/install-smarthealth.sh | sudo sh'
 done
 ```
 
